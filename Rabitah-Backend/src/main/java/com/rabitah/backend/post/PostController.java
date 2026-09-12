@@ -5,6 +5,7 @@ import com.rabitah.backend.security.CurrentUserService;
 import com.rabitah.backend.realtime.ApprovalEvents;
 import com.rabitah.backend.user.Role;
 import com.rabitah.backend.user.User;
+import com.rabitah.backend.storage.MediaStorage;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -20,6 +21,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -27,8 +29,9 @@ public class PostController {
     private final JdbcTemplate jdbc;
     private final CurrentUserService currentUsers;
     private final ApprovalEvents events;
+    private final MediaStorage storage;
 
-    public PostController(JdbcTemplate jdbc, CurrentUserService currentUsers, ApprovalEvents events) { this.jdbc = jdbc; this.currentUsers = currentUsers; this.events = events; }
+    public PostController(JdbcTemplate jdbc, CurrentUserService currentUsers, ApprovalEvents events, MediaStorage storage) { this.jdbc = jdbc; this.currentUsers = currentUsers; this.events = events; this.storage=storage; }
 
     @GetMapping("/posts/feed")
     public List<PostView> feed(Authentication auth) {
@@ -61,6 +64,19 @@ public class PostController {
                 id,user.getId(),request.body().trim(),"SCOPED",status,empty(request.department()),empty(request.section()),request.academicYear());
         if ("PENDING".equals(status)) events.approvalsChanged();
         return get(id, auth);
+    }
+
+    @PostMapping(value="/posts", consumes=org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
+    public PostView createWithMedia(@RequestParam(defaultValue="") String body,@RequestParam(required=false) String department,@RequestParam(required=false) String section,@RequestParam(required=false) Integer academicYear,@RequestPart MultipartFile file,Authentication auth) throws java.io.IOException {
+        User user=currentUsers.require(auth);
+        if(file.isEmpty()||file.getContentType()==null||!(file.getContentType().startsWith("image/")||file.getContentType().startsWith("video/")))throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_MEDIA","Attach an image or video file.");
+        if(file.getSize()>50_000_000)throw new ApiException(HttpStatus.BAD_REQUEST,"MEDIA_TOO_LARGE","Media must be 50 MB or smaller.");
+        UUID id=UUID.randomUUID();String status=user.getRole()==Role.SYSTEM_ADMIN?"APPROVED":"PENDING";String key=storage.save("posts/"+id,file);
+        jdbc.update("insert into posts(id,author_id,body,visibility,status,department_code,section_code,academic_year,created_at,updated_at) values(?,?,?,?,?,?,?,?,now(),now())",id,user.getId(),body.trim(),"SCOPED",status,empty(department),empty(section),academicYear);
+        jdbc.update("insert into post_media(post_id,storage_key,original_name,content_type,size_bytes) values(?,?,?,?,?)",id,key,file.getOriginalFilename(),file.getContentType(),file.getSize());
+        if("PENDING".equals(status))events.approvalsChanged();return get(id,auth);
     }
 
     @GetMapping("/posts/{id}")

@@ -55,6 +55,10 @@ The base seed creates `SYSADMIN`, 720 deterministic roster entries, and 24 commu
 
 Run `mvn test` from the repository root. The backend uses Flyway as the only schema owner and Hibernate validates the migrated schema.
 
+## Production deployment
+
+The desktop client remains native JavaFX; deploy the Spring API and PostgreSQL to Railway, then distribute the client to students configured with the Railway API URL. Media is S3-compatible object storage in production, not Railway's ephemeral disk. See [Railway deployment](docs/railway-deployment.md).
+
 ## Eclipse
 
 Use **File → Import → Existing Maven Projects**, select this repository, and import both child projects. Ensure Eclipse uses the Java 21 JDK. Run `RabitahBackendApplication` for the API and `RabitahApplication` for the desktop client.
