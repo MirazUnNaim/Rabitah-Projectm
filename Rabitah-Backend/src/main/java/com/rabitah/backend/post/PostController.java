@@ -13,9 +13,12 @@ import jakarta.validation.constraints.Size;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
@@ -36,8 +39,8 @@ public class PostController {
     @GetMapping("/posts/feed")
     public List<PostView> feed(Authentication auth) {
         User user = currentUsers.require(auth);
-        return jdbc.query("""
-                select p.id,p.body,p.status,p.created_at,u.nickname,u.student_id,
+        return posts(user, """
+                select p.id,p.body,p.status,p.created_at,p.author_id,u.nickname,u.student_id,
                   count(distinct case when r.reaction='LIKE' then r.user_id end) likes,
                   count(distinct case when r.reaction='DISLIKE' then r.user_id end) dislikes,
                   count(distinct c.id) comments,
@@ -49,8 +52,8 @@ public class PostController {
                   and (?='SYSTEM_ADMIN' or (p.department_code is null or p.department_code=?)
                     and (p.section_code is null or p.section_code=?)
                     and (p.academic_year is null or p.academic_year=?))
-                group by p.id,u.nickname,u.student_id order by p.created_at desc limit 100
-                """, this::post, user.getId(), user.getRole().name(), user.getDepartmentCode(), user.getSectionCode(), user.getAcademicYear());
+                group by p.id,p.author_id,u.nickname,u.student_id order by p.created_at desc
+                """, user.getId(), user.getRole().name(), user.getDepartmentCode(), user.getSectionCode(), user.getAcademicYear());
     }
 
     @PostMapping("/posts")
@@ -82,15 +85,26 @@ public class PostController {
     @GetMapping("/posts/{id}")
     public PostView get(@PathVariable UUID id, Authentication auth) {
         User user=currentUsers.require(auth);
-        List<PostView> rows=jdbc.query("""
-                select p.id,p.body,p.status,p.created_at,u.nickname,u.student_id,
+        List<PostView> rows=posts(user, """
+                select p.id,p.body,p.status,p.created_at,p.author_id,u.nickname,u.student_id,
                 count(distinct case when r.reaction='LIKE' then r.user_id end) likes,
                 count(distinct case when r.reaction='DISLIKE' then r.user_id end) dislikes,
                 count(distinct c.id) comments,max(case when r.user_id=? then r.reaction end) my_reaction
                 from posts p join users u on u.id=p.author_id left join post_reactions r on r.post_id=p.id
                 left join comments c on c.post_id=p.id and c.deleted_at is null where p.id=? and p.deleted_at is null
-                group by p.id,u.nickname,u.student_id""",this::post,user.getId(),id);
+                group by p.id,p.author_id,u.nickname,u.student_id""",user.getId(),id);
         if(rows.isEmpty())throw new ApiException(HttpStatus.NOT_FOUND,"POST_NOT_FOUND","Post not found");return rows.getFirst();
+    }
+
+    /** Streams a post attachment only after the viewer has been allowed to load its post. */
+    @GetMapping("/posts/{postId}/media/{mediaId}")
+    public ResponseEntity<byte[]> media(@PathVariable UUID postId,@PathVariable UUID mediaId,Authentication auth) throws java.io.IOException {
+        get(postId,auth);
+        List<StoredMedia> items=jdbc.query("select storage_key,original_name,content_type from post_media where id=? and post_id=?",
+                (rs,n)->new StoredMedia(rs.getString(1),rs.getString(2),rs.getString(3)),mediaId,postId);
+        if(items.isEmpty())throw new ApiException(HttpStatus.NOT_FOUND,"POST_MEDIA_NOT_FOUND","Post media was not found");
+        StoredMedia item=items.getFirst();
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(item.contentType())).body(storage.read(item.storageKey()));
     }
 
     @PutMapping("/posts/{id}/reaction")
@@ -100,17 +114,27 @@ public class PostController {
     @DeleteMapping("/posts/{id}/reaction")
     @Transactional public PostView removeReaction(@PathVariable UUID id,Authentication auth){User u=currentUsers.require(auth);jdbc.update("delete from post_reactions where post_id=? and user_id=?",id,u.getId());return get(id,auth);}
 
+    @DeleteMapping("/posts/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Transactional
+    public void deletePost(@PathVariable UUID id,Authentication auth){
+        User user=currentUsers.require(auth);
+        int changed=jdbc.update("update posts set deleted_at=now(),updated_at=now() where id=? and deleted_at is null and (author_id=? or ?='SYSTEM_ADMIN')",id,user.getId(),user.getRole().name());
+        if(changed==0)throw deleteFailure("posts",id);
+        events.approvalsChanged();
+    }
+
     @GetMapping("/posts/{id}/comments")
     public List<CommentView> comments(@PathVariable UUID id,Authentication auth){User user=currentUsers.require(auth);get(id,auth);return jdbc.query("""
-            select c.id,c.body,c.created_at,u.nickname,u.student_id,c.parent_comment_id,
+            select c.id,c.body,c.created_at,c.author_id,u.nickname,u.student_id,c.parent_comment_id,
               count(distinct case when r.reaction='LIKE' then r.user_id end) likes,
               count(distinct case when r.reaction='DISLIKE' then r.user_id end) dislikes,
               max(case when r.user_id=? then r.reaction end) my_reaction
             from comments c join users u on u.id=c.author_id
             left join comment_reactions r on r.comment_id=c.id
             where c.post_id=? and c.deleted_at is null
-            group by c.id,u.nickname,u.student_id order by c.created_at
-            """,(rs,n)->commentView(rs),user.getId(),id);}
+            group by c.id,c.author_id,u.nickname,u.student_id order by c.created_at
+            """,(rs,n)->commentView(rs,user),user.getId(),id);}
 
     @PostMapping("/posts/{id}/comments") @ResponseStatus(HttpStatus.CREATED)
     @Transactional public CommentView comment(@PathVariable UUID id,@Valid @RequestBody CommentRequest request,Authentication auth){User u=currentUsers.require(auth);get(id,auth);if(request.parentCommentId()!=null){Integer count=jdbc.queryForObject("select count(*) from comments where id=? and post_id=? and deleted_at is null",Integer.class,request.parentCommentId(),id);if(count==null||count==0)throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_PARENT_COMMENT","The reply target is not a comment on this post");}UUID cid=UUID.randomUUID();jdbc.update("insert into comments(id,post_id,author_id,body,parent_comment_id,created_at,updated_at) values(?,?,?,?,?,now(),now())",cid,id,u.getId(),request.body().trim(),request.parentCommentId());return comments(id,auth).stream().filter(c->c.id().equals(cid)).findFirst().orElseThrow();}
@@ -121,13 +145,37 @@ public class PostController {
     @DeleteMapping("/comments/{id}/reaction")
     @Transactional public CommentView removeCommentReaction(@PathVariable UUID id,Authentication auth){User u=currentUsers.require(auth);UUID postId=commentPostId(id);get(postId,auth);jdbc.update("delete from comment_reactions where comment_id=? and user_id=?",id,u.getId());return comments(postId,auth).stream().filter(c->c.id().equals(id)).findFirst().orElseThrow();}
 
-    private PostView post(ResultSet rs,int row)throws SQLException{return new PostView(rs.getObject("id",UUID.class),rs.getString("body"),rs.getString("status"),rs.getObject("created_at",java.time.OffsetDateTime.class).toInstant(),rs.getString("nickname"),rs.getString("student_id"),rs.getLong("likes"),rs.getLong("dislikes"),rs.getLong("comments"),rs.getString("my_reaction"));}
-    private CommentView commentView(ResultSet rs)throws SQLException{return new CommentView(rs.getObject("id",UUID.class),rs.getString("body"),rs.getObject("created_at",java.time.OffsetDateTime.class).toInstant(),rs.getString("nickname"),rs.getString("student_id"),rs.getObject("parent_comment_id",UUID.class),rs.getLong("likes"),rs.getLong("dislikes"),rs.getString("my_reaction"));}
+    @DeleteMapping("/comments/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Transactional
+    public void deleteComment(@PathVariable UUID id,Authentication auth){
+        User user=currentUsers.require(auth);
+        int changed=jdbc.update("update comments set deleted_at=now(),updated_at=now() where id=? and deleted_at is null and (author_id=? or ?='SYSTEM_ADMIN')",id,user.getId(),user.getRole().name());
+        if(changed==0)throw deleteFailure("comments",id);
+    }
+
+    private List<PostView> posts(User viewer,String sql,Object... args){
+        List<PostView> result=jdbc.query(sql,(rs,n)->post(rs,viewer),args);
+        List<PostView> withMedia=new ArrayList<>();
+        for(PostView post:result)withMedia.add(new PostView(post.id(),post.body(),post.status(),post.createdAt(),post.authorId(),post.authorNickname(),post.authorStudentId(),post.likes(),post.dislikes(),post.comments(),post.myReaction(),post.canDelete(),mediaFor(post.id())));
+        return withMedia;
+    }
+    private PostView post(ResultSet rs,User viewer)throws SQLException{UUID authorId=rs.getObject("author_id",UUID.class);return new PostView(rs.getObject("id",UUID.class),rs.getString("body"),rs.getString("status"),rs.getObject("created_at",java.time.OffsetDateTime.class).toInstant(),authorId,rs.getString("nickname"),rs.getString("student_id"),rs.getLong("likes"),rs.getLong("dislikes"),rs.getLong("comments"),rs.getString("my_reaction"),canDelete(viewer,authorId),List.of());}
+    private List<MediaView> mediaFor(UUID postId){return jdbc.query("select id,original_name,content_type,size_bytes from post_media where post_id=? order by created_at",(rs,n)->new MediaView(rs.getObject(1,UUID.class),rs.getString(2),rs.getString(3),rs.getLong(4)),postId);}
+    private CommentView commentView(ResultSet rs,User viewer)throws SQLException{UUID authorId=rs.getObject("author_id",UUID.class);return new CommentView(rs.getObject("id",UUID.class),rs.getString("body"),rs.getObject("created_at",java.time.OffsetDateTime.class).toInstant(),authorId,rs.getString("nickname"),rs.getString("student_id"),rs.getObject("parent_comment_id",UUID.class),rs.getLong("likes"),rs.getLong("dislikes"),rs.getString("my_reaction"),canDelete(viewer,authorId));}
+    private boolean canDelete(User viewer,UUID authorId){return viewer.getId().equals(authorId)||viewer.getRole()==Role.SYSTEM_ADMIN;}
+    private ApiException deleteFailure(String table,UUID id){
+        Integer exists=jdbc.queryForObject("select count(*) from "+table+" where id=? and deleted_at is null",Integer.class,id);
+        if(exists==null||exists==0)return new ApiException(HttpStatus.NOT_FOUND,table.equals("posts")?"POST_NOT_FOUND":"COMMENT_NOT_FOUND",table.equals("posts")?"Post not found":"Comment not found");
+        return new ApiException(HttpStatus.FORBIDDEN,"DELETE_NOT_ALLOWED","You can only delete your own "+(table.equals("posts")?"posts":"comments")+".");
+    }
     private UUID commentPostId(UUID id){List<UUID> rows=jdbc.query("select post_id from comments where id=? and deleted_at is null",(rs,n)->rs.getObject(1,UUID.class),id);if(rows.isEmpty())throw new ApiException(HttpStatus.NOT_FOUND,"COMMENT_NOT_FOUND","Comment not found");return rows.getFirst();}
     private String empty(String s){return s==null||s.isBlank()?null:s;}
     public record CreatePost(@NotBlank @Size(max=2000) String body,String department,String section,Integer academicYear){}
     public record Reaction(@Pattern(regexp="LIKE|DISLIKE") String type){}
     public record CommentRequest(@NotBlank @Size(max=1000) String body,UUID parentCommentId){}
-    public record PostView(UUID id,String body,String status,Instant createdAt,String authorNickname,String authorStudentId,long likes,long dislikes,long comments,String myReaction){}
-    public record CommentView(UUID id,String body,Instant createdAt,String authorNickname,String authorStudentId,UUID parentCommentId,long likes,long dislikes,String myReaction){}
+    public record PostView(UUID id,String body,String status,Instant createdAt,UUID authorId,String authorNickname,String authorStudentId,long likes,long dislikes,long comments,String myReaction,boolean canDelete,List<MediaView> media){}
+    public record MediaView(UUID id,String originalName,String contentType,long sizeBytes){}
+    public record CommentView(UUID id,String body,Instant createdAt,UUID authorId,String authorNickname,String authorStudentId,UUID parentCommentId,long likes,long dislikes,String myReaction,boolean canDelete){}
+    private record StoredMedia(String storageKey,String originalName,String contentType){}
 }
