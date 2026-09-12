@@ -16,17 +16,25 @@ public class ApprovalEvents {
     void disconnected(WebSocketSession session) { sessions.remove(session); }
 
     public void approvalsChanged() {
+        changed("APPROVALS_CHANGED");
+    }
+
+    public void chatChanged() {
+        changed("CHAT_CHANGED");
+    }
+
+    private void changed(String event) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override public void afterCommit() { broadcast(); }
+                @Override public void afterCommit() { broadcast(event); }
             });
         } else {
-            broadcast();
+            broadcast(event);
         }
     }
 
-    private void broadcast() {
-        TextMessage message = new TextMessage("APPROVALS_CHANGED");
+    private void broadcast(String event) {
+        TextMessage message = new TextMessage(event);
         sessions.removeIf(session -> {
             if (!session.isOpen()) return true;
             try { synchronized (session) { session.sendMessage(message); } return false; }

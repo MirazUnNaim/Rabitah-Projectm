@@ -66,7 +66,7 @@ public final class ApprovalSocket implements AutoCloseable {
         @Override public void onOpen(WebSocket webSocket) { connected = true; webSocket.request(1); }
         @Override public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
             message.append(data);
-            if (last) { if (message.toString().contains("APPROVALS_CHANGED")) fireChanged(); message.setLength(0); }
+            if (last) { if (message.toString().endsWith("_CHANGED")) fireChanged(); message.setLength(0); }
             webSocket.request(1); return null;
         }
         @Override public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
