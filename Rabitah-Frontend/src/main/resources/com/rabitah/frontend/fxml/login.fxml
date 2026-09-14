@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?import javafx.scene.control.*?>
+<?import javafx.geometry.Rectangle2D?>
 <?import javafx.scene.image.Image?>
 <?import javafx.scene.image.ImageView?>
 <?import javafx.scene.layout.*?>
@@ -9,14 +10,17 @@
     <HBox maxWidth="1180" maxHeight="650" styleClass="login-shell">
         <VBox spacing="16" HBox.hgrow="ALWAYS" styleClass="login-welcome-pane">
             <HBox alignment="CENTER_LEFT" spacing="9">
-                <ImageView fitWidth="36" fitHeight="36" preserveRatio="true" smooth="true" styleClass="login-logo">
-                    <image><Image url="@../images/rabitah-app-icon-v1.png"/></image>
+                <ImageView fx:id="loginBrandLogo" fitWidth="36" fitHeight="36" preserveRatio="true" smooth="true" styleClass="login-logo">
+                    <image><Image url="@../images/rabitah-app-icon-round-v1.png"/></image>
                 </ImageView>
                 <Label text="Rabitah" styleClass="login-brand"/>
             </HBox>
             <Region VBox.vgrow="ALWAYS"/>
             <VBox spacing="8" styleClass="login-copy">
-                <Label text="WELCOME BACK" styleClass="login-heading"/>
+                <ImageView fitWidth="300" fitHeight="144" preserveRatio="true" smooth="true" accessibleText="Welcome" styleClass="login-welcome-gif">
+                    <viewport><Rectangle2D minX="0" minY="52" width="480" height="230"/></viewport>
+                    <image><Image url="@../images/login-welcome-v1.gif"/></image>
+                </ImageView>
                 <Label text="Please fill up your login credentials." styleClass="login-subheading"/>
             </VBox>
             <VBox spacing="8" styleClass="login-form">

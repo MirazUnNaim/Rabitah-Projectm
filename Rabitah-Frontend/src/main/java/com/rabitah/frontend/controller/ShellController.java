@@ -60,6 +60,7 @@ import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyEvent;
@@ -129,6 +130,7 @@ public final class ShellController {
     private final Map<ScrollPane, Rectangle> scrollLines = new WeakHashMap<>();
     private final Map<ScrollPane, Long> lastScrollLineNanos = new WeakHashMap<>();
     private final Set<Node> hoverLineTargets = Collections.newSetFromMap(new WeakHashMap<>());
+    private final Set<Scene> popupScenes = Collections.newSetFromMap(new WeakHashMap<>());
     private Timeline tabLineAnimation;
     private Timeline hoverLineAnimation;
     private Rectangle tabMotionLine;
@@ -179,6 +181,7 @@ public final class ShellController {
     @FXML private Label profileYearValue;
     @FXML private Label profileRoleValue;
     @FXML private Label profileGalleryCount;
+    @FXML private Label themeModeLabel;
     @FXML private Label paperStatus;
     @FXML private Label approvalSummary;
     @FXML private Label serverLabel;
@@ -187,6 +190,8 @@ public final class ShellController {
     @FXML private ImageView chatReceiverPhoto;
     @FXML private ImageView chatProfilePhoto;
     @FXML private ImageView topbarCat;
+    @FXML private ImageView topbarLogo;
+    @FXML private ImageView themeToggleIcon;
     @FXML private TextArea noticeBody;
     @FXML private TextField noticeTitle;
     @FXML private TextField paperTitle;
@@ -220,6 +225,7 @@ public final class ShellController {
     @FXML private Button chatSendButton;
     @FXML private Button communityAttachButton;
     @FXML private Button communitySendButton;
+    @FXML private ToggleButton themeToggle;
     @FXML private Tab approvalsTab;
     @FXML private Tab privateChatTab;
     @FXML private TabPane mainTabs;
@@ -229,6 +235,7 @@ public final class ShellController {
     @FXML private VBox communityMessageContainer;
     @FXML private VBox communityEmptyState;
     @FXML private VBox noticeComposer;
+    @FXML private VBox noticeDetailHeader;
     @FXML private VBox noticePdfPages;
     @FXML private VBox noticeDetailEmpty;
     @FXML private VBox communityComposer;
@@ -263,8 +270,12 @@ public final class ShellController {
         var user = context.session().current().user();
         serverLabel.setText("● Connected");
         refreshCurrentProfileUi();
+        refreshThemeControl();
         openPostComposer.setMaxWidth(Double.MAX_VALUE);
         feedContainer.setFillWidth(true);
+        topbarLogo.setClip(circleClip(16.5));
+        themeToggleIcon.setClip(circleClip(14));
+        profileImage.setClip(circleClip(39));
         feedAvatarPhoto.setClip(new Circle(19, 19, 19));
         feedAvatarPhoto.setVisible(false);
         loadCurrentProfilePhoto();
@@ -394,6 +405,10 @@ public final class ShellController {
                 new KeyValue(topbarCat.rotateProperty(), rotation, interpolator),
                 new KeyValue(topbarCat.scaleXProperty(), scaleX, interpolator),
                 new KeyValue(topbarCat.scaleYProperty(), scaleY, interpolator));
+    }
+
+    private Circle circleClip(double radius) {
+        return new Circle(radius, radius, radius);
     }
 
     /** Adds website-like inertial scrolling without changing the platform's normal mouse-wheel controls. */
@@ -1591,6 +1606,30 @@ public final class ShellController {
         chatProfilePhotos.keySet().removeIf(path -> path.startsWith(marker));
     }
 
+    @FXML
+    private void toggleTheme() {
+        context.router().setDarkMode(themeToggle.isSelected());
+        refreshThemeControl();
+        for (Scene popupScene : new ArrayList<>(popupScenes)) {
+            if (popupScene != null && popupScene.getRoot() != null) {
+                context.router().applyTheme(popupScene.getRoot());
+            }
+        }
+    }
+
+    private void refreshThemeControl() {
+        if (themeToggle == null || themeModeLabel == null) {
+            return;
+        }
+        boolean dark = context.router().isDarkMode();
+        themeToggle.setSelected(dark);
+        themeToggle.setAccessibleText(dark ? "Switch to light mode" : "Switch to dark mode");
+        if (themeToggle.getTooltip() != null) {
+            themeToggle.getTooltip().setText(dark ? "Switch to light mode" : "Switch to dark mode");
+        }
+        themeModeLabel.setText(dark ? "Dark mode" : "Light mode");
+    }
+
     /** Dialogs use their own JavaFX scene, so explicitly carry over the application theme. */
     private void preparePopup(Dialog<?> popup) {
         if (mainTabs != null && mainTabs.getScene() != null) {
@@ -1619,6 +1658,8 @@ public final class ShellController {
             if (!popupScene.getStylesheets().contains(stylesheet)) {
                 popupScene.getStylesheets().add(stylesheet);
             }
+            popupScenes.add(popupScene);
+            context.router().applyTheme(popupScene.getRoot());
         });
     }
 
@@ -1754,6 +1795,9 @@ public final class ShellController {
                 row.setAlignment(Pos.CENTER_LEFT);
                 row.getStyleClass().add("notice-headline-row");
                 if (isUnread) row.getStyleClass().add("unread");
+                if ("EMERGENCY".equalsIgnoreCase(notice.path("type").asText())) {
+                    row.getStyleClass().add("emergency");
+                }
                 installLiveHoverLines(row);
                 setText(null);
                 setGraphic(row);
@@ -1773,6 +1817,10 @@ public final class ShellController {
             noticeList.refresh();
             noticeDetailTitle.setText(notice.path("title").asText("Notice"));
             noticeDetailMeta.setText(noticeScope(notice) + " · " + relative(notice.path("publishedAt").asText()));
+            noticeDetailHeader.getStyleClass().remove("emergency-notice-detail");
+            if ("EMERGENCY".equalsIgnoreCase(notice.path("type").asText())) {
+                noticeDetailHeader.getStyleClass().add("emergency-notice-detail");
+            }
             boolean canDelete = notice.path("canDelete").asBoolean(false);
             deleteNoticeButton.setVisible(canDelete);
             deleteNoticeButton.setManaged(canDelete);
@@ -1875,6 +1923,7 @@ public final class ShellController {
         noticeDetailEmpty.setVisible(empty);
         noticeDetailEmpty.setManaged(empty);
         if (empty) {
+            noticeDetailHeader.getStyleClass().remove("emergency-notice-detail");
             noticeDetailTitle.setText("Select a notice");
             noticeDetailMeta.setText("Choose a headline to open its PDF.");
             noticePdfStatus.setText("");

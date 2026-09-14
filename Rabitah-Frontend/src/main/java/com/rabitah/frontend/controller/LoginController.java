@@ -26,6 +26,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.shape.Circle;
 import javafx.stage.Modality;
 import javafx.stage.Popup;
 import javafx.stage.StageStyle;
@@ -42,6 +43,7 @@ public final class LoginController {
     @FXML private Button loginButton;
     @FXML private Label errorLabel;
     @FXML private ImageView loginVisual;
+    @FXML private ImageView loginBrandLogo;
     @FXML private StackPane loginVisualStage;
     private Timeline approvalPolling;
     private String waitingId;
@@ -55,6 +57,7 @@ public final class LoginController {
 
     @FXML
     private void initialize() {
+        loginBrandLogo.setClip(new Circle(18, 18, 18));
         visiblePassword.textProperty().bindBidirectional(password.textProperty());
         loginVisual.fitWidthProperty().bind(loginVisualStage.widthProperty());
         loginVisual.fitHeightProperty().bind(loginVisualStage.heightProperty());
@@ -210,6 +213,9 @@ public final class LoginController {
         VBox toast = new VBox(6);
         toast.setAlignment(Pos.CENTER);
         toast.getStyleClass().add("login-success-toast");
+        if (context.router().isDarkMode()) {
+            toast.getStyleClass().add("dark-mode");
+        }
         Label icon = new Label("✓");
         icon.getStyleClass().add("login-success-icon");
         Label title = new Label("You are logged in");
@@ -254,6 +260,7 @@ public final class LoginController {
             if (popupScene != null) {
                 String stylesheet = getClass().getResource("/com/rabitah/frontend/css/app.css").toExternalForm();
                 if (!popupScene.getStylesheets().contains(stylesheet)) popupScene.getStylesheets().add(stylesheet);
+                context.router().applyTheme(popupScene.getRoot());
             }
         });
     }

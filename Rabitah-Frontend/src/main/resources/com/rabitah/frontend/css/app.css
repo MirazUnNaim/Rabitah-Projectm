@@ -231,6 +231,7 @@
 }
 .login-copy { -fx-padding: 8 0 12; }
 .login-heading { -fx-font-size: 31px; -fx-font-weight: 900; -fx-letter-spacing: 1.5px; -fx-text-fill: #32272c; }
+.login-welcome-gif { -fx-effect: dropshadow(gaussian, rgba(68,55,63,.18), 8, 0, 0, 2); }
 .login-subheading { -fx-font-size: 14px; -fx-text-fill: #806974; }
 .login-form { -fx-max-width: 390; -fx-padding: 12 0; }
 .login-field-label { -fx-font-weight: 900; -fx-text-fill: #44373f; -fx-padding: 6 0 0; }
@@ -1006,3 +1007,276 @@
 }
 .profile-view-gallery-tile:hover { -fx-scale-x: 1.02; -fx-scale-y: 1.02; -fx-effect: dropshadow(gaussian, rgba(81,226,245,.3), 12, 0, 0, 3); }
 .profile-view-gallery-empty { -fx-padding: 15 0 4; -fx-text-fill: #806974; -fx-font-size: 12px; }
+
+/* Theme picker lives only in My Profile. The supplied mark is deliberately kept as the visual anchor. */
+.theme-control {
+    -fx-padding: 3 6 3 4;
+    -fx-background-color: #f2fffc;
+    -fx-background-radius: 999;
+    -fx-border-color: #9df9ef;
+    -fx-border-radius: 999;
+}
+.theme-toggle {
+    -fx-min-width: 34;
+    -fx-min-height: 34;
+    -fx-max-width: 34;
+    -fx-max-height: 34;
+    -fx-padding: 2;
+    -fx-background-color: #18252d;
+    -fx-background-radius: 999;
+    -fx-border-color: #51e2f5;
+    -fx-border-radius: 999;
+    -fx-border-width: 1.2;
+}
+.theme-toggle:hover { -fx-background-color: #253b47; -fx-effect: dropshadow(gaussian, rgba(81,226,245,.48), 11, 0, 0, 2); }
+.theme-toggle:selected { -fx-background-color: linear-gradient(to bottom right, #075b87, #35c9ef); -fx-border-color: #d9f8ff; }
+.theme-mode-label { -fx-font-size: 10px; -fx-font-weight: 900; -fx-text-fill: #5d4650; }
+
+/* Dark mode — pitch black is the canvas; sky-blue gradients provide orientation and action. */
+.dark-mode {
+    -fx-background-color: #000000;
+    -fx-text-fill: #edfaff;
+}
+.dark-mode .label { -fx-text-fill: #edfaff; }
+.dark-mode .page, .dark-mode .workspace-stage {
+    -fx-background-color: linear-gradient(to bottom right, #000000 8%, #020c14 54%, #001d2c 100%);
+}
+.dark-mode .topbar {
+    -fx-background-color: linear-gradient(to right, #000000, #03131f 62%, #06324a);
+    -fx-border-color: transparent transparent #37cfff transparent;
+    -fx-effect: dropshadow(gaussian, rgba(51,201,255,.18), 18, 0, 0, 5);
+}
+.dark-mode .brand-small, .dark-mode .brand { -fx-text-fill: #8ae7ff; }
+.dark-mode .topbar .field-label { -fx-text-fill: #edfaff; }
+.dark-mode .build-label { -fx-text-fill: #7eddf5; }
+.dark-mode .status-pill { -fx-background-color: linear-gradient(to right, #0c83b7, #42d9ff); -fx-text-fill: #00111b; }
+.dark-mode .muted, .dark-mode .post-meta, .dark-mode .comment-meta,
+.dark-mode .chat-contact-meta, .dark-mode .chat-person-detail,
+.dark-mode .message-meta, .dark-mode .profile-gallery-caption,
+.dark-mode .profile-view-id { -fx-text-fill: #91bed0; }
+.dark-mode .section-title, .dark-mode .field-label, .dark-mode .post-author,
+.dark-mode .chat-panel-title, .dark-mode .chat-section-label,
+.dark-mode .chat-contact-name, .dark-mode .chat-profile-name,
+.dark-mode .profile-display-name, .dark-mode .profile-section-title,
+.dark-mode .profile-view-title, .dark-mode .profile-view-name,
+.dark-mode .profile-view-gallery-title, .dark-mode .notice-detail-title,
+.dark-mode .notice-list-heading { -fx-text-fill: #f3fcff; }
+
+.dark-mode .button {
+    -fx-background-color: linear-gradient(to bottom right, #075a83, #1eaed6);
+    -fx-text-fill: #f0fcff;
+    -fx-border-color: rgba(132,229,255,.52);
+    -fx-border-radius: 9;
+    -fx-border-width: 1;
+}
+.dark-mode .button:hover {
+    -fx-background-color: linear-gradient(to bottom right, #138aba, #57dcff);
+    -fx-text-fill: #001018;
+    -fx-effect: dropshadow(gaussian, rgba(81,226,245,.43), 14, 0, 0, 3);
+}
+.dark-mode .secondary-button { -fx-background-color: #0a2d40; -fx-text-fill: #a8edff; -fx-border-color: #229fca; }
+.dark-mode .secondary-button:hover { -fx-background-color: #167da5; -fx-text-fill: #f3fcff; }
+.dark-mode .danger-button, .dark-mode .notice-delete-button { -fx-background-color: #a81735; -fx-text-fill: #fff5f6; -fx-border-color: #ff5270; }
+.dark-mode .danger-button:hover, .dark-mode .notice-delete-button:hover { -fx-background-color: #e93355; -fx-text-fill: #ffffff; }
+.dark-mode .text-field, .dark-mode .password-field, .dark-mode .text-area,
+.dark-mode .combo-box-base {
+    -fx-background-color: #061823;
+    -fx-text-fill: #eefbff;
+    -fx-prompt-text-fill: #6ea4b8;
+    -fx-border-color: #1b7599;
+}
+.dark-mode .text-area .content { -fx-background-color: #061823; }
+.dark-mode .text-field:focused, .dark-mode .password-field:focused,
+.dark-mode .text-area:focused, .dark-mode .combo-box-base:focused {
+    -fx-border-color: #55ddff;
+    -fx-effect: dropshadow(gaussian, rgba(81,226,245,.38), 10, 0, 0, 0);
+}
+.dark-mode .combo-box-popup .list-view, .dark-mode .combo-box-popup .list-cell {
+    -fx-background-color: #071923;
+    -fx-text-fill: #edfaff;
+}
+
+.dark-mode .platform-tabs { -fx-background-color: transparent; }
+.dark-mode .platform-tabs .tab { -fx-background-color: transparent; }
+.dark-mode .platform-tabs .tab:hover { -fx-background-color: rgba(37,172,218,.22); }
+.dark-mode .platform-tabs .tab:selected {
+    -fx-background-color: #061823;
+    -fx-border-color: #54dcff transparent transparent transparent;
+}
+.dark-mode .platform-tabs .tab .tab-label { -fx-text-fill: #92c8da; }
+.dark-mode .platform-tabs .tab:selected .tab-label { -fx-text-fill: #f1fcff; }
+
+.dark-mode .scroll-pane, .dark-mode .scroll-pane > .viewport,
+.dark-mode .scroll-pane .corner { -fx-background-color: #000000; }
+.dark-mode .scroll-bar:vertical .track, .dark-mode .scroll-bar:horizontal .track { -fx-background-color: #061823; }
+.dark-mode .scroll-bar:vertical .thumb, .dark-mode .scroll-bar:horizontal .thumb { -fx-background-color: #147da5; }
+.dark-mode .scroll-bar:vertical .thumb:hover, .dark-mode .scroll-bar:horizontal .thumb:hover { -fx-background-color: #52dbff; }
+.dark-mode .list-view {
+    -fx-background-color: #06131c;
+    -fx-border-color: #125b78;
+}
+.dark-mode .list-cell {
+    -fx-text-fill: #eafaff;
+    -fx-border-color: transparent transparent #123446 transparent;
+}
+.dark-mode .list-cell:filled:hover { -fx-background-color: #092737; }
+.dark-mode .list-cell:filled:selected { -fx-background-color: linear-gradient(to right, #075a83, #1aaed7); -fx-text-fill: #ffffff; }
+.dark-mode .titled-pane > .title { -fx-background-color: linear-gradient(to right, #092c40, #0a5f83); -fx-text-fill: #effcff; }
+.dark-mode .titled-pane > *.content { -fx-background-color: #06131c; -fx-border-color: #176f91; }
+
+.dark-mode .social-feed, .dark-mode .social-feed-top,
+.dark-mode .notice-board-shell, .dark-mode .chat-workspace,
+.dark-mode .chat-thread-stage, .dark-mode .community-chat-shell,
+.dark-mode .community-thread-stage { -fx-background-color: #000000; }
+.dark-mode .compact-composer, .dark-mode .feed-composer,
+.dark-mode .post-card, .dark-mode .empty-feed,
+.dark-mode .chat-empty-state, .dark-mode .profile-info-section,
+.dark-mode .profile-gallery-section, .dark-mode .profile-view-gallery-section {
+    -fx-background-color: #061823;
+    -fx-border-color: #16789d;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,.72), 14, 0, 0, 4);
+}
+.dark-mode .composer-prompt, .dark-mode .chat-message-field,
+.dark-mode .comment-input { -fx-background-color: #082431; -fx-text-fill: #eafaff; -fx-border-color: #176e8f; }
+.dark-mode .composer-prompt:hover, .dark-mode .feed-refresh-button:hover,
+.dark-mode .post-action-button:hover { -fx-background-color: #0d4d67; -fx-text-fill: #eafaff; }
+.dark-mode .composer-media-button { -fx-background-color: #0a3549; -fx-text-fill: #a9ecff; }
+.dark-mode .composer-media-button:hover { -fx-background-color: #1288b1; -fx-text-fill: #ffffff; }
+.dark-mode .post-body, .dark-mode .comment-body, .dark-mode .message-body { -fx-text-fill: #e9f9ff; }
+.dark-mode .feed-avatar, .dark-mode .post-avatar, .dark-mode .dialog-avatar,
+.dark-mode .comment-avatar, .dark-mode .comment-composer-avatar,
+.dark-mode .avatar, .dark-mode .chat-person-avatar, .dark-mode .chat-header-avatar,
+.dark-mode .chat-profile-avatar {
+    -fx-background-color: linear-gradient(to bottom right, #0b719d, #55dcff);
+}
+.dark-mode .profile-avatar-frame { -fx-background-color: linear-gradient(to bottom right, #0875a4, #58dcff); }
+.dark-mode .post-delete-button, .dark-mode .comment-delete-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #ff91a0;
+    -fx-border-color: transparent;
+}
+.dark-mode .post-delete-button:hover, .dark-mode .comment-delete-button:hover {
+    -fx-background-color: #531322;
+    -fx-text-fill: #ffc8cf;
+}
+.dark-mode .image-attachment { -fx-background-color: #03131c; -fx-border-color: #166a8b; }
+.dark-mode .video-attachment, .dark-mode .approval-video-attachment { -fx-background-color: #020b11; }
+.dark-mode .post-action-button { -fx-text-fill: #9bcadc; }
+.dark-mode .post-action-button.like-action.action-selected { -fx-background-color: #073f57; -fx-text-fill: #5cddff; }
+.dark-mode .post-action-button.dislike-action.action-selected { -fx-background-color: #551325; -fx-text-fill: #ff8a9e; }
+
+.dark-mode .messenger-shell { -fx-background-color: #000000; -fx-border-color: #125a78; }
+.dark-mode .chat-people-panel, .dark-mode .chat-profile-panel {
+    -fx-background-color: linear-gradient(to bottom, #030d13, #061b27);
+    -fx-border-color: transparent #125a78 transparent transparent;
+}
+.dark-mode .chat-profile-panel { -fx-border-color: transparent transparent transparent #125a78; }
+.dark-mode .chat-search { -fx-background-color: #061d2a; -fx-text-fill: #ecfbff; }
+.dark-mode .chat-search:focused { -fx-background-color: #082c3d; -fx-border-color: #50d9ff; }
+.dark-mode .chat-people-list .list-cell:filled:hover .chat-person-row { -fx-background-color: #092b3c; }
+.dark-mode .chat-people-list .list-cell:filled:selected .chat-person-row {
+    -fx-background-color: linear-gradient(to right, #075b83, #129ec9);
+    -fx-border-color: #59ddff;
+}
+.dark-mode .chat-contact-header, .dark-mode .chat-message-composer,
+.dark-mode .community-chat-header { -fx-background-color: #05151e; -fx-border-color: #145e7d; }
+.dark-mode .message-scroll > .viewport { -fx-background-color: #000000; }
+.dark-mode .message-bubble { -fx-background-color: #071f2c; -fx-border-color: #176681; -fx-effect: dropshadow(gaussian, rgba(0,0,0,.60), 8, 0, 0, 2); }
+.dark-mode .message-bubble.mine { -fx-background-color: linear-gradient(to bottom right, #06668e, #29bce1); -fx-border-color: #60ddff; }
+.dark-mode .message-bubble.mine .message-body { -fx-text-fill: #f2fdff; }
+.dark-mode .message-bubble.mine .message-meta { -fx-text-fill: #d1f7ff; }
+.dark-mode .message-sender { -fx-text-fill: #86d8ed; }
+.dark-mode .message-attachment-button { -fx-background-color: #082c3d; -fx-text-fill: #a9edff; -fx-border-color: #187392; }
+.dark-mode .message-attachment-button:hover { -fx-background-color: #168db4; -fx-text-fill: #ffffff; }
+.dark-mode .message-bubble.mine .message-attachment-button { -fx-background-color: rgba(0,24,34,.42); -fx-text-fill: #effcff; }
+
+.dark-mode .notice-headline-pane, .dark-mode .notice-detail-pane { -fx-background-color: #000000; }
+.dark-mode .notice-board-header {
+    -fx-background-color: linear-gradient(to right, #061823, #082e42);
+    -fx-border-color: transparent transparent #197392 transparent;
+}
+.dark-mode .notice-headline-row { -fx-background-color: #061823; -fx-border-color: transparent transparent #104158 transparent; }
+.dark-mode .notice-headline-row.unread { -fx-background-color: #072437; -fx-border-color: transparent transparent #2fc9f5 transparent; }
+.dark-mode .notice-list .list-cell:filled:hover .notice-headline-row { -fx-background-color: #0a3043; }
+.dark-mode .notice-list .list-cell:filled:selected .notice-headline-row { -fx-background-color: linear-gradient(to right, #075a83, #139fc8); -fx-border-color: #5cddff; }
+.dark-mode .notice-date { -fx-background-color: linear-gradient(to right, #0877aa, #46d9ff); -fx-text-fill: #001018; }
+.dark-mode .notice-detail-header { -fx-background-color: #061823; -fx-border-color: transparent transparent #197392 transparent; }
+.dark-mode .notice-preview-stage, .dark-mode .notice-pdf-scroll,
+.dark-mode .notice-pdf-scroll > .viewport, .dark-mode .approval-media-scroll,
+.dark-mode .approval-media-scroll > .viewport, .dark-mode .approval-pdf-scroll,
+.dark-mode .approval-pdf-scroll > .viewport { -fx-background-color: #020b11; }
+.dark-mode .notice-empty-detail { -fx-background-color: #061b27; -fx-border-color: #197392; }
+.dark-mode .notice-pdf-status, .dark-mode .approval-review-actions { -fx-background-color: #061823; -fx-border-color: #176f91 transparent transparent transparent; }
+
+/* Emergency notices intentionally retain a high-contrast red signal in both themes. */
+.notice-headline-row.emergency { -fx-border-color: transparent transparent #ef3340 transparent; -fx-border-width: 0 0 2 0; }
+.notice-headline-row.emergency .notice-date { -fx-background-color: #e52337; -fx-text-fill: #ffffff; }
+.notice-detail-header.emergency-notice-detail { -fx-border-color: transparent transparent #ef3340 transparent; -fx-border-width: 0 0 3 0; }
+.dark-mode .notice-headline-row.emergency { -fx-background-color: #210a10; -fx-border-color: transparent transparent #ff4057 transparent; }
+.dark-mode .notice-list .list-cell:filled:hover .notice-headline-row.emergency { -fx-background-color: #351019; }
+.dark-mode .notice-list .list-cell:filled:selected .notice-headline-row.emergency { -fx-background-color: linear-gradient(to right, #741325, #d82740); -fx-border-color: #ff7182; }
+.dark-mode .notice-headline-row.emergency .notice-date { -fx-background-color: #f02a40; -fx-text-fill: #ffffff; }
+.dark-mode .notice-detail-header.emergency-notice-detail { -fx-background-color: #210a10; -fx-border-color: transparent transparent #ff4057 transparent; }
+
+.dark-mode .profile-scroll, .dark-mode .profile-scroll > .viewport,
+.dark-mode .profile-view-scroll, .dark-mode .profile-view-scroll > .viewport,
+.dark-mode .profile-view-content { -fx-background-color: #000000; }
+.dark-mode .profile-hero, .dark-mode .profile-view-hero {
+    -fx-background-color: linear-gradient(to bottom right, #051923, #082e42);
+    -fx-border-color: #19799e;
+}
+.dark-mode .profile-name-input { -fx-background-color: #061b27; -fx-border-color: #19799e; }
+.dark-mode .profile-info-card, .dark-mode .profile-view-fact {
+    -fx-background-color: linear-gradient(to bottom right, #061b27, #082e42);
+    -fx-border-color: #176c8d;
+}
+.dark-mode .profile-info-label, .dark-mode .profile-view-fact-label,
+.dark-mode .profile-eyebrow { -fx-text-fill: #76bfd6; }
+.dark-mode .profile-info-value, .dark-mode .profile-view-fact-value { -fx-text-fill: #effcff; }
+.dark-mode .profile-gallery-tile, .dark-mode .profile-view-gallery-tile {
+    -fx-background-color: linear-gradient(to bottom right, #06324a, #0b759d);
+    -fx-border-color: #2fc9f5;
+}
+.dark-mode .profile-gallery-empty { -fx-background-color: #061b27; -fx-border-color: #176c8d; }
+.dark-mode .theme-control { -fx-background-color: #04141e; -fx-border-color: #1e88ad; }
+.dark-mode .theme-mode-label { -fx-text-fill: #a5eaff; }
+.dark-mode .theme-toggle { -fx-background-color: #000000; -fx-border-color: #5fddff; }
+.dark-mode .theme-toggle:selected { -fx-background-color: linear-gradient(to bottom right, #0a7fac, #60deff); -fx-border-color: #d9f8ff; }
+
+.dark-mode .dialog-pane, .dark-mode .create-post-dialog, .dark-mode .post-dialog,
+.dark-mode .approval-review-dialog, .dark-mode .approval-pdf-dialog .dialog-pane {
+    -fx-background-color: #000000;
+    -fx-border-color: #2387ab;
+}
+.dark-mode .dialog-pane .button-bar { -fx-background-color: #061823; -fx-border-color: #176f91 transparent transparent transparent; }
+.dark-mode .dialog-pane .header-panel { -fx-background-color: #061823; }
+.dark-mode .dialog-titlebar { -fx-border-color: transparent transparent #176f91 transparent; }
+.dark-mode .dialog-close { -fx-background-color: #0b3a50; -fx-text-fill: #eafaff; }
+.dark-mode .dialog-close:hover { -fx-background-color: #178db4; -fx-text-fill: #ffffff; }
+.dark-mode .approval-media-review .image-attachment { -fx-background-color: #061823; -fx-border-color: #176f91; }
+
+.dark-mode .card, .dark-mode .content-card, .dark-mode .surface {
+    -fx-background-color: #061823;
+    -fx-border-color: #176f91;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,.72), 22, 0, 0, 7);
+}
+.dark-mode .login-page { -fx-background-color: linear-gradient(to bottom right, #000000, #041824 56%, #062c42); }
+.dark-mode .login-shell { -fx-background-color: #04131d; -fx-border-color: #1f8cb1; }
+.dark-mode .login-welcome-pane { -fx-background-color: #04131d; }
+.dark-mode .login-brand, .dark-mode .login-heading { -fx-text-fill: #f0fcff; }
+.dark-mode .login-subheading, .dark-mode .login-help { -fx-text-fill: #91bed0; }
+.dark-mode .login-field-label { -fx-text-fill: #b5ecfb; }
+.dark-mode .login-input { -fx-background-color: #061d29; -fx-border-color: #176f91; -fx-text-fill: #f0fcff; }
+.dark-mode .login-visual-pane { -fx-background-color: linear-gradient(to bottom right, #000000, #05283a 55%, #0c7398); }
+.dark-mode .login-visual-monogram { -fx-background-color: rgba(81,226,245,.12); -fx-border-color: #59dcff; -fx-text-fill: #9aeaff; }
+.dark-mode .forgot-password-button { -fx-text-fill: #78def7; }
+.dark-mode .forgot-password-button:hover { -fx-text-fill: #c0f7ff; }
+.dark-mode .check-box, .dark-mode .check-box .text { -fx-text-fill: #bdeefa; }
+.dark-mode .check-box .box { -fx-background-color: #061d29; -fx-border-color: #2a8cad; }
+.dark-mode .check-box:selected .box { -fx-background-color: #209cc2; }
+.dark-mode.login-success-toast {
+    -fx-background-color: linear-gradient(to bottom right, #041923, #08384d);
+    -fx-border-color: #49d9ff;
+}
+.dark-mode.login-success-toast .login-success-title { -fx-text-fill: #f1fcff; }
+.dark-mode.login-success-toast .login-success-copy { -fx-text-fill: #a4dbea; }

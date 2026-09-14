@@ -9,7 +9,7 @@ ICON_PATH="${ICONS_DIR}/com.rabitah.Rabitah.png"
 LAUNCHER_PATH="${APPLICATIONS_DIR}/com.rabitah.Rabitah.desktop"
 
 mkdir -p "${APPLICATIONS_DIR}" "${ICONS_DIR}"
-install -m 0644 "${PROJECT_DIR}/Rabitah-Frontend/src/main/resources/com/rabitah/frontend/images/rabitah-app-icon-v1.png" "${ICON_PATH}"
+install -m 0644 "${PROJECT_DIR}/Rabitah-Frontend/src/main/resources/com/rabitah/frontend/images/rabitah-app-icon-round-v1.png" "${ICON_PATH}"
 sed -e "s|@PROJECT_DIR@|${PROJECT_DIR}|g" -e "s|@ICON_PATH@|${ICON_PATH}|g" \
     "${PROJECT_DIR}/desktop/rabitah.desktop.in" > "${LAUNCHER_PATH}"
 chmod 644 "${LAUNCHER_PATH}"
