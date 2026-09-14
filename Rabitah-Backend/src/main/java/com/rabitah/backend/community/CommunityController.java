@@ -55,12 +55,28 @@ public class CommunityController {
             throw new ApiException(HttpStatus.BAD_REQUEST, "NO_COMMUNITY", "This account has no student community");
         }
         return jdbc.queryForObject("""
-                select id, name, department_code, section_code, academic_year
+                select id, name, department_code, section_code, academic_year, room_type
                 from community_rooms
-                where department_code=? and section_code=? and academic_year=?
-                """, (rs, rowNum) -> new Room(
-                rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3), rs.getString(4), rs.getInt(5)),
+                where department_code=? and section_code=? and academic_year=? and room_type='SECTION'
+                """, (rs, rowNum) -> room(rs),
                 user.getDepartmentCode(), user.getSectionCode(), user.getAcademicYear());
+    }
+
+    /** A student can choose their own class section or the wider community for their department. */
+    @GetMapping("/rooms/available")
+    public List<Room> available(Authentication auth) {
+        User user = current.require(auth);
+        if (user.getDepartmentCode() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "NO_COMMUNITY", "This account has no student community");
+        }
+        return jdbc.query("""
+                select id, name, department_code, section_code, academic_year, room_type
+                from community_rooms
+                where department_code=?
+                  and (room_type='DEPARTMENT'
+                    or (room_type='SECTION' and section_code=? and academic_year=?))
+                order by case room_type when 'SECTION' then 0 else 1 end, name
+                """, (rs, rowNum) -> room(rs), user.getDepartmentCode(), user.getSectionCode(), user.getAcademicYear());
     }
 
     @GetMapping("/rooms/{id}/messages")
@@ -171,10 +187,21 @@ public class CommunityController {
                 rs.getObject("size_bytes", Long.class));
     }
 
+    private Room room(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new Room(
+                rs.getObject("id", UUID.class),
+                rs.getString("name"),
+                rs.getString("department_code"),
+                rs.getString("section_code"),
+                rs.getObject("academic_year", Integer.class),
+                rs.getString("room_type"));
+    }
+
     private void access(UUID id, User user) {
         Long count = jdbc.queryForObject("""
                 select count(*) from community_rooms
-                where id=? and (?='SYSTEM_ADMIN' or department_code=? and section_code=? and academic_year=?)
+                where id=? and (?='SYSTEM_ADMIN' or (department_code=? and
+                  (room_type='DEPARTMENT' or (room_type='SECTION' and section_code=? and academic_year=?))))
                 """, Long.class, id, user.getRole().name(), user.getDepartmentCode(), user.getSectionCode(),
                 user.getAcademicYear());
         if (count == null || count == 0) {
@@ -195,7 +222,7 @@ public class CommunityController {
 
     public record MessageRequest(@NotBlank @Size(max = 3000) String body) {}
 
-    public record Room(UUID id, String name, String department, String section, int academicYear) {}
+    public record Room(UUID id, String name, String department, String section, Integer academicYear, String type) {}
 
     public record Message(UUID id, String body, Instant createdAt, UUID authorId, String authorNickname,
                           String authorLoginId, boolean authorHasProfilePhoto, Instant authorAvatarVersion,

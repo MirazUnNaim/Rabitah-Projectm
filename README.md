@@ -19,37 +19,29 @@ Rabitah is a Java 21 university social and academic desktop application. The rep
 
 ## One-command launch
 
-Linux (including Parrot/Debian):
+Rabitah runs on Linux, macOS, and Windows. JavaFX downloads the correct native libraries for the operating system when Maven starts it.
 
-```bash
-./run-linux.sh
-```
+| Operating system | Start server + desktop app | Start a client for an existing campus server |
+| --- | --- | --- |
+| Linux (including Parrot/Debian) | `./run-linux.sh` | `./run-client-linux.sh` |
+| macOS | `./run-macos.command` | `./run-client-macos.command` |
+| Windows Command Prompt or PowerShell | `run-windows.bat` | `run-client-windows.bat` |
 
-Windows Command Prompt or PowerShell:
+The macOS `.command` launchers can be double-clicked in Finder. If macOS reports that a cloned script is not executable, run `chmod +x run-macos.command run-client-macos.command` once in Terminal.
 
-```bat
-run-windows.bat
-```
+Each full launcher starts PostgreSQL, waits for the API to become healthy, and opens the desktop application. A later click opens another Rabitah window rather than attempting to start a second backend. They require Java 21, Maven 3.9+, and Docker (Docker Desktop on macOS/Windows). The local development SysAdmin credentials are `SYSADMIN` / `Rabitah123!`; override the password with the `RABITAH_SYSTEM_ADMIN_PASSWORD` environment variable outside local development.
 
-Both launchers start PostgreSQL, wait for the API to become healthy, and then open the desktop application. They require Java 21, Maven 3.9+, and Docker. The local development SysAdmin credentials are `SYSADMIN` / `Rabitah123!`; override the password with the `RABITAH_SYSTEM_ADMIN_PASSWORD` environment variable outside local development.
-
-For a student on another computer on the same local network, run only the client. It discovers the Rabitah server automatically:
-
-```bash
-./run-client-linux.sh
-```
-
-```bat
-run-client-windows.bat
-```
+For a student on another computer on the same local network, use the client launcher for their operating system from the table above. It discovers the Rabitah server automatically.
 
 No address needs to be entered. The client sends a local-network discovery request on UDP port 45871, connects to the responding Rabitah server, and then receives approval changes over the `/ws/approvals` WebSocket. A ten-second API refresh remains as a fallback. The server and clients must be on the same local network, and the firewall must allow TCP 8080 and UDP 45871.
 
 ## Student approval flow
 
-A roster student enters their student ID and a new password of at least eight characters on the normal sign-in screen. The first attempt creates an access request and does not grant access. SysAdmin reviews it under **Admin Approvals**. After approval, the student signs in with the same credentials. Declined students receive a clear denial message. Student posts and question-paper PDFs also remain hidden until SysAdmin approves them from the same inbox.
+A roster student enters their numeric campus ID and a new password of at least eight characters on the normal sign-in screen. The first attempt creates an access request and does not grant access. SysAdmin reviews it under **Admin Approvals**. After approval, the student signs in with the same credentials. Declined students receive a clear denial message. Student posts and question-paper PDFs also remain hidden until SysAdmin approves them from the same inbox.
 
-The base seed creates `SYSADMIN`, 720 deterministic roster entries, and 24 community rooms. When `RABITAH_DEMO_PASSWORD` is set it also creates active student accounts `CSE1A003`, `EEE2B003`, and `CEE3A003`, plus sample feed, notice, community, and academic data. Use the passwords supplied through the environment; no runtime secret is committed.
+Student IDs use `BB00DDSRR`: `BB` is batch 21–24, `DD` is department (`11` MPE, `21` EEE, `41` CSE, `51` CEE), `S` is section (`1`/A or `2`/B), and `RR` is roll 01–60. For example, batch 23 / CSE / section 2 / roll 11 is `230041211`.
+
+The base seed creates `SYSADMIN`, 1,920 deterministic roster entries, and 32 community rooms. To create local test accounts and an ignored CSV credential list, set `RABITAH_SEED_DEMO_STUDENT_ACCOUNTS=true`; it writes only newly created account credentials to `RABITAH_SEED_CREDENTIAL_EXPORT`. Never enable that option against a shared or production database.
 
 ## Verification
 

@@ -5,11 +5,23 @@ cd "$(dirname "$0")"
 command -v java >/dev/null || { echo "Java 21 is required."; exit 1; }
 if command -v mvn >/dev/null 2>&1; then
   MVN=mvn
+elif [[ -x /opt/maven/bin/mvn ]]; then
+  MVN=/opt/maven/bin/mvn
+elif [[ -x /opt/apache-maven-3.9.16/bin/mvn ]]; then
+  MVN=/opt/apache-maven-3.9.16/bin/mvn
 elif [[ -x /tmp/apache-maven-3.9.11/bin/mvn ]]; then
   MVN=/tmp/apache-maven-3.9.11/bin/mvn
 else
   echo "Maven 3.9+ is required."; exit 1
 fi
+
+# A second desktop-launcher click should create another client window, not try to bind a new backend to port 8080.
+if curl -fsS http://127.0.0.1:8080/actuator/health >/dev/null 2>&1; then
+  echo "Rabitah server is already running. Opening another window..."
+  RABITAH_API_BASE_URL=http://127.0.0.1:8080/api/v1 "$MVN" -q -pl Rabitah-Frontend javafx:run
+  exit 0
+fi
+
 command -v docker >/dev/null || { echo "Docker is required."; exit 1; }
 
 export RABITAH_SYSTEM_ADMIN_PASSWORD="${RABITAH_SYSTEM_ADMIN_PASSWORD:-Rabitah123!}"

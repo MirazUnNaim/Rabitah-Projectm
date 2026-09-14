@@ -1,20 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?import javafx.scene.control.*?>
+<?import javafx.scene.image.Image?>
 <?import javafx.scene.image.ImageView?>
 <?import javafx.scene.layout.*?>
 
 <BorderPane xmlns:fx="http://javafx.com/fxml" fx:controller="com.rabitah.frontend.controller.ShellController" styleClass="page">
  <top>
   <HBox spacing="14" styleClass="topbar">
-   <Label text="Rabitah" styleClass="brand-small"/>
+   <HBox alignment="CENTER_LEFT" spacing="8">
+    <StackPane styleClass="topbar-logo-frame"><ImageView fitWidth="33" fitHeight="33" preserveRatio="true" smooth="true"><image><Image url="@../images/rabitah-app-icon-v1.png"/></image></ImageView></StackPane>
+    <Label text="Rabitah" styleClass="brand-small"/>
+   </HBox>
    <Label text="YOUR CAMPUS SPACE" styleClass="build-label"/>
-   <Region HBox.hgrow="ALWAYS"/>
+   <StackPane fx:id="catRoamingLane" minWidth="135" prefHeight="42" HBox.hgrow="ALWAYS" styleClass="cat-roaming-lane">
+    <ImageView fx:id="topbarCat" fitHeight="49" preserveRatio="true" smooth="true" mouseTransparent="true" styleClass="cat-roaming-mascot"><image><Image url="@../images/rabitah-cat-v1.png"/></image></ImageView>
+   </StackPane>
    <Label fx:id="serverLabel" styleClass="status-pill"/>
    <Label fx:id="welcome" styleClass="field-label"/>
    <Button text="Log out" onAction="#logout" styleClass="secondary-button"/>
   </HBox>
  </top>
  <center>
+  <StackPane fx:id="workspaceStage" styleClass="workspace-stage">
   <TabPane fx:id="mainTabs" tabClosingPolicy="UNAVAILABLE" styleClass="platform-tabs">
    <tabs>
     <Tab text="Social Feed">
@@ -22,7 +29,7 @@
       <top>
        <VBox spacing="7" styleClass="social-feed-top">
         <HBox spacing="10" styleClass="compact-composer">
-         <StackPane><Label fx:id="feedAvatar" styleClass="feed-avatar"/><ImageView fx:id="feedAvatarPhoto" fitWidth="38" fitHeight="38" preserveRatio="true"/></StackPane>
+         <StackPane onMouseClicked="#openCurrentUserProfile" styleClass="profile-avatar-link"><Label fx:id="feedAvatar" styleClass="feed-avatar"/><ImageView fx:id="feedAvatarPhoto" fitWidth="38" fitHeight="38" preserveRatio="true"/></StackPane>
          <Button fx:id="openPostComposer" text="What's on your mind?" onAction="#openPostComposer" HBox.hgrow="ALWAYS" styleClass="composer-prompt"/>
          <Button text="Photo / video" onAction="#openPostComposerWithMedia" styleClass="composer-media-button"/>
         </HBox>
@@ -41,18 +48,19 @@
      </BorderPane>
     </Tab>
     <Tab text="Notice Board">
-     <BorderPane>
+     <BorderPane styleClass="notice-board-shell">
       <top>
-       <VBox spacing="8" styleClass="toolbar">
+       <VBox spacing="8" styleClass="notice-board-header">
+        <HBox spacing="9" alignment="CENTER_LEFT"><VBox spacing="1"><Label text="Notice board" styleClass="section-title"/><Label fx:id="noticeSummary" text="Official campus announcements" styleClass="muted"/></VBox><Region HBox.hgrow="ALWAYS"/><Button fx:id="noticeNewButton" text="➕" onAction="#toggleNoticeComposer" styleClass="notice-add-button"><tooltip><Tooltip text="Create a notice"/></tooltip></Button><Button text="↻" onAction="#refreshNotices" styleClass="chat-refresh-button"><tooltip><Tooltip text="Refresh notices"/></tooltip></Button></HBox>
         <VBox fx:id="noticeComposer" spacing="8" styleClass="feed-composer">
-         <HBox spacing="8"><Label text="Publish an official notice" styleClass="section-title"/><Region HBox.hgrow="ALWAYS"/><ComboBox fx:id="noticeType" prefWidth="145"/><Button fx:id="publishNoticeButton" text="Publish notice" onAction="#publishNotice"/></HBox>
+         <HBox spacing="8" alignment="CENTER_LEFT"><Label text="Publish an official PDF notice" styleClass="section-title"/><Region HBox.hgrow="ALWAYS"/><ComboBox fx:id="noticeType" prefWidth="130"/><ComboBox fx:id="noticeDepartment" prefWidth="135"/><ComboBox fx:id="noticeYear" prefWidth="115"/><ComboBox fx:id="noticeSection" prefWidth="110"/></HBox>
          <TextField fx:id="noticeTitle" promptText="Clear, useful notice title" HBox.hgrow="ALWAYS"/>
-         <TextArea fx:id="noticeBody" promptText="Write the details students need…" prefRowCount="2"/>
+         <TextArea fx:id="noticeBody" promptText="Write the details students need. Rabitah will create a downloadable PDF, or you may attach your own PDF." prefRowCount="3"/>
+         <HBox spacing="8" alignment="CENTER_LEFT"><Button text="Attach PDF" onAction="#chooseNoticePdf" styleClass="secondary-button"/><Label fx:id="noticeUploadStatus" text="A PDF will be generated from the details if none is attached." styleClass="muted" HBox.hgrow="ALWAYS"/><Button fx:id="publishNoticeButton" text="Publish notice" onAction="#publishNotice"/></HBox>
         </VBox>
-        <HBox spacing="8"><Label text="Campus announcements" styleClass="section-title"/><Region HBox.hgrow="ALWAYS"/><Button text="Refresh notices" onAction="#refreshNotices" styleClass="secondary-button"/></HBox>
        </VBox>
       </top>
-      <center><ListView fx:id="noticeList"/></center>
+      <center><SplitPane dividerPositions="0.46" styleClass="notice-split"><items><VBox spacing="7" styleClass="notice-headline-pane"><Label text="Latest notices" styleClass="notice-list-heading"/><ListView fx:id="noticeList" VBox.vgrow="ALWAYS" styleClass="notice-list"/></VBox><BorderPane styleClass="notice-detail-pane"><top><VBox spacing="6" styleClass="notice-detail-header"><Label fx:id="noticeDetailTitle" text="Select a notice" wrapText="true" styleClass="notice-detail-title"/><HBox spacing="7" alignment="CENTER_LEFT"><Label fx:id="noticeDetailMeta" text="Choose a headline to open its PDF." styleClass="muted"/><Region HBox.hgrow="ALWAYS"/><Button text="−" onAction="#zoomNoticeOut" styleClass="notice-tool-button"><tooltip><Tooltip text="Zoom out"/></tooltip></Button><Label fx:id="noticeZoomLabel" text="100%" styleClass="notice-zoom-label"/><Button text="➕" onAction="#zoomNoticeIn" styleClass="notice-tool-button"><tooltip><Tooltip text="Zoom in"/></tooltip></Button><Button text="Download" onAction="#downloadNoticePdf" styleClass="secondary-button"/><Button fx:id="deleteNoticeButton" text="🗑" onAction="#deleteSelectedNotice" styleClass="notice-delete-button"><tooltip><Tooltip text="Delete notice"/></tooltip></Button></HBox></VBox></top><center><StackPane styleClass="notice-preview-stage"><ScrollPane fx:id="noticePdfScroll" fitToWidth="false" hbarPolicy="AS_NEEDED" vbarPolicy="AS_NEEDED" styleClass="notice-pdf-scroll"><content><VBox fx:id="noticePdfPages" spacing="14" alignment="TOP_CENTER" styleClass="notice-pdf-pages"/></content></ScrollPane><VBox fx:id="noticeDetailEmpty" spacing="7" alignment="CENTER" mouseTransparent="true" styleClass="notice-empty-detail"><Label text="Your selected notice will open here" styleClass="chat-empty-title"/><Label text="Use the zoom controls to read the PDF comfortably, or download it for later." wrapText="true" styleClass="chat-empty-copy"/></VBox></StackPane></center><bottom><Label fx:id="noticePdfStatus" styleClass="notice-pdf-status"/></bottom></BorderPane></items></SplitPane></center>
      </BorderPane>
     </Tab>
     <Tab text="Question Repository">
@@ -92,7 +100,7 @@
        <BorderPane styleClass="chat-workspace">
         <top>
          <HBox spacing="11" alignment="CENTER_LEFT" styleClass="chat-contact-header">
-          <StackPane>
+          <StackPane onMouseClicked="#openSelectedChatProfile" styleClass="profile-avatar-link">
            <Label fx:id="chatReceiverAvatar" text="?" styleClass="chat-header-avatar"/>
            <ImageView fx:id="chatReceiverPhoto" fitWidth="42" fitHeight="42" preserveRatio="true"/>
           </StackPane>
@@ -119,7 +127,7 @@
          <VBox spacing="5" styleClass="chat-message-composer">
           <Label fx:id="chatAttachmentStatus" styleClass="chat-attachment-status"/>
           <HBox spacing="9" alignment="CENTER_LEFT" styleClass="chat-composer-row">
-           <Button fx:id="chatAttachButton" text="＋" onAction="#chooseChatAttachment" styleClass="chat-attach-button"><tooltip><Tooltip text="Attach photo, video, or file"/></tooltip></Button>
+           <Button fx:id="chatAttachButton" text="➕" onAction="#chooseChatAttachment" styleClass="chat-attach-button"><tooltip><Tooltip text="Attach photo, video, or file"/></tooltip></Button>
            <TextField fx:id="messageText" promptText="Write a message…" onAction="#sendMessage" HBox.hgrow="ALWAYS" styleClass="chat-message-field"/>
            <Button fx:id="chatSendButton" text="Send" onAction="#sendMessage" styleClass="chat-send-button"/>
           </HBox>
@@ -130,7 +138,7 @@
       <right>
        <VBox prefWidth="274" spacing="12" styleClass="chat-profile-panel">
         <VBox spacing="5" alignment="CENTER" styleClass="chat-profile-summary">
-         <StackPane>
+         <StackPane onMouseClicked="#openSelectedChatProfile" styleClass="profile-avatar-link">
           <Label fx:id="chatProfileAvatar" text="?" styleClass="chat-profile-avatar"/>
           <ImageView fx:id="chatProfilePhoto" fitWidth="72" fitHeight="72" preserveRatio="true"/>
          </StackPane>
@@ -153,7 +161,7 @@
     </Tab>
     <Tab text="Community">
      <BorderPane styleClass="community-chat-shell">
-      <top><VBox spacing="6" styleClass="community-chat-header"><HBox spacing="8" alignment="CENTER_LEFT"><Label fx:id="communityName" styleClass="section-title"/><Region HBox.hgrow="ALWAYS"/><Button text="↻" onAction="#refreshCommunity" styleClass="chat-refresh-button"><tooltip><Tooltip text="Refresh community chat"/></tooltip></Button></HBox><Label text="A focused home for your class community—announcements, questions, and shared momentum." styleClass="muted"/></VBox></top>
+      <top><VBox spacing="6" styleClass="community-chat-header"><HBox spacing="10" alignment="CENTER_LEFT"><VBox spacing="2"><Label fx:id="communityName" styleClass="section-title"/><ComboBox fx:id="communityRoomChoice" promptText="Choose community" onAction="#selectCommunity" prefWidth="320" styleClass="community-room-selector"/></VBox><Region HBox.hgrow="ALWAYS"/><Button text="↻" onAction="#refreshCommunity" styleClass="chat-refresh-button"><tooltip><Tooltip text="Refresh community chat"/></tooltip></Button></HBox><Label text="Choose your section community or the department-wide community." styleClass="muted"/></VBox></top>
       <center>
        <StackPane styleClass="community-thread-stage">
         <ScrollPane fx:id="communityScroll" fitToWidth="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" styleClass="message-scroll">
@@ -169,7 +177,7 @@
        <VBox fx:id="communityComposer" spacing="5" styleClass="chat-message-composer">
         <Label fx:id="communityAttachmentStatus" styleClass="chat-attachment-status"/>
         <HBox spacing="9" alignment="CENTER_LEFT" styleClass="chat-composer-row">
-         <Button fx:id="communityAttachButton" text="＋" onAction="#chooseCommunityAttachment" styleClass="chat-attach-button"><tooltip><Tooltip text="Attach photo, video, or file"/></tooltip></Button>
+         <Button fx:id="communityAttachButton" text="➕" onAction="#chooseCommunityAttachment" styleClass="chat-attach-button"><tooltip><Tooltip text="Attach photo, video, or file"/></tooltip></Button>
          <TextField fx:id="communityText" promptText="Write to your community…" onAction="#sendCommunityMessage" HBox.hgrow="ALWAYS" styleClass="chat-message-field"/>
          <Button fx:id="communitySendButton" text="Send" onAction="#sendCommunityMessage" styleClass="chat-send-button"/>
         </HBox>
@@ -178,12 +186,25 @@
      </BorderPane>
     </Tab>
     <Tab fx:id="approvalsTab" text="Admin Approvals">
-     <ScrollPane fitToWidth="true"><content><VBox spacing="10" styleClass="toolbar"><HBox spacing="8"><Label text="Approval inbox" styleClass="section-title"/><Label fx:id="approvalSummary" styleClass="muted"/><Region HBox.hgrow="ALWAYS"/><Button text="Refresh" onAction="#refreshApprovals"/></HBox><TextField fx:id="decisionReason" promptText="Optional decision note"/><TitledPane text="Student access requests" expanded="true"><content><VBox spacing="6"><ListView fx:id="userApprovalList" prefHeight="150"/><HBox spacing="8"><Button text="Approve" onAction="#approveUser"/><Button text="Decline" onAction="#rejectUser" styleClass="danger-button"/></HBox></VBox></content></TitledPane><TitledPane text="Pending posts" expanded="true"><content><VBox spacing="6"><ListView fx:id="postApprovalList" prefHeight="150"/><HBox spacing="8"><Button text="Approve" onAction="#approvePost"/><Button text="Decline" onAction="#rejectPost" styleClass="danger-button"/></HBox></VBox></content></TitledPane><TitledPane text="Pending question papers" expanded="true"><content><VBox spacing="6"><ListView fx:id="paperApprovalList" prefHeight="150"/><HBox spacing="8"><Button text="Approve" onAction="#approvePaper"/><Button text="Decline" onAction="#rejectPaper" styleClass="danger-button"/></HBox></VBox></content></TitledPane></VBox></content></ScrollPane>
+     <ScrollPane fitToWidth="true"><content><VBox spacing="10" styleClass="toolbar"><HBox spacing="8"><Label text="Approval inbox" styleClass="section-title"/><Label fx:id="approvalSummary" styleClass="muted"/><Region HBox.hgrow="ALWAYS"/><Button text="Refresh" onAction="#refreshApprovals"/></HBox><TextField fx:id="decisionReason" promptText="Optional decision note"/><TitledPane text="Student access requests" expanded="true"><content><VBox spacing="6"><ListView fx:id="userApprovalList" prefHeight="150"/><HBox spacing="8"><Button text="Approve" onAction="#approveUser"/><Button text="Decline" onAction="#rejectUser" styleClass="danger-button"/></HBox></VBox></content></TitledPane><TitledPane text="Password-reset requests" expanded="true"><content><VBox spacing="6"><Label text="Approving applies the securely submitted new password immediately." styleClass="muted"/><ListView fx:id="passwordResetApprovalList" prefHeight="135"/><HBox spacing="8"><Button text="Approve reset" onAction="#approvePasswordReset"/><Button text="Decline reset" onAction="#rejectPasswordReset" styleClass="danger-button"/></HBox></VBox></content></TitledPane><TitledPane text="Pending posts" expanded="true"><content><VBox spacing="6"><Label text="Review a post and its attachments before deciding." styleClass="muted"/><ListView fx:id="postApprovalList" prefHeight="150"/><HBox spacing="8"><Button text="See attachments" onAction="#reviewPostAttachments" styleClass="secondary-button"/><Region HBox.hgrow="ALWAYS"/><Button text="Approve" onAction="#approvePost"/><Button text="Decline" onAction="#rejectPost" styleClass="danger-button"/></HBox></VBox></content></TitledPane><TitledPane text="Pending question papers" expanded="true"><content><VBox spacing="6"><Label text="Open the submitted PDF and review it before deciding." styleClass="muted"/><ListView fx:id="paperApprovalList" prefHeight="150"/><HBox spacing="8"><Button text="See attachment" onAction="#reviewPaperAttachment" styleClass="secondary-button"/><Region HBox.hgrow="ALWAYS"/><Button text="Approve" onAction="#approvePaper"/><Button text="Decline" onAction="#rejectPaper" styleClass="danger-button"/></HBox></VBox></content></TitledPane></VBox></content></ScrollPane>
     </Tab>
     <Tab text="My Profile">
-     <StackPane><VBox spacing="18" styleClass="content-card"><HBox spacing="16"><StackPane><Label fx:id="profileInitial" styleClass="avatar"/><ImageView fx:id="profileImage" fitHeight="58" fitWidth="58" preserveRatio="true"/></StackPane><VBox spacing="5"><Label fx:id="profileName" styleClass="section-title"/><Label text="Your campus identity" styleClass="muted"/><HBox spacing="8" alignment="CENTER_LEFT"><TextField fx:id="profileNicknameInput" promptText="Update display name" HBox.hgrow="ALWAYS"/><Button text="Save name" onAction="#updateProfileName" styleClass="secondary-button"/></HBox></VBox><Region HBox.hgrow="ALWAYS"/><Button text="Update photo" onAction="#chooseProfilePhoto" styleClass="secondary-button"/></HBox><Separator/><Label fx:id="profileDetails" wrapText="true" style="-fx-font-size:15px;"/><Label fx:id="profilePhotoStatus" styleClass="muted"/></VBox></StackPane>
+     <ScrollPane fitToWidth="true" hbarPolicy="NEVER" styleClass="profile-scroll"><content>
+      <VBox spacing="16" styleClass="profile-page">
+       <HBox spacing="18" alignment="CENTER_LEFT" styleClass="profile-hero">
+        <StackPane styleClass="profile-avatar-frame"><Label fx:id="profileInitial" styleClass="avatar"/><ImageView fx:id="profileImage" fitHeight="78" fitWidth="78" preserveRatio="true"/></StackPane>
+        <VBox spacing="6" HBox.hgrow="ALWAYS"><Label fx:id="profileName" styleClass="profile-display-name"/><Label text="Your campus identity" styleClass="profile-eyebrow"/><HBox spacing="8" alignment="CENTER_LEFT"><TextField fx:id="profileNicknameInput" promptText="Update display name" HBox.hgrow="ALWAYS" styleClass="profile-name-input"/><Button text="Save name" onAction="#updateProfileName" styleClass="secondary-button"/></HBox></VBox>
+        <VBox spacing="8"><Button text="Update avatar" onAction="#chooseProfilePhoto" styleClass="secondary-button"/><Button fx:id="loginVisualButton" text="Update login image" onAction="#chooseLoginVisual" styleClass="secondary-button" visible="false" managed="false"/></VBox>
+       </HBox>
+       <Label fx:id="profilePhotoStatus" styleClass="muted"/>
+       <VBox spacing="10" styleClass="profile-info-section"><Label text="Profile information" styleClass="profile-section-title"/><FlowPane hgap="12" vgap="12" styleClass="profile-info-grid"><VBox styleClass="profile-info-card"><Label text="CAMPUS ID" styleClass="profile-info-label"/><Label fx:id="profileStudentIdValue" styleClass="profile-info-value"/></VBox><VBox styleClass="profile-info-card"><Label text="DEPARTMENT" styleClass="profile-info-label"/><Label fx:id="profileDepartmentValue" styleClass="profile-info-value"/></VBox><VBox styleClass="profile-info-card"><Label text="SECTION" styleClass="profile-info-label"/><Label fx:id="profileSectionValue" styleClass="profile-info-value"/></VBox><VBox styleClass="profile-info-card"><Label text="ACADEMIC YEAR" styleClass="profile-info-label"/><Label fx:id="profileYearValue" styleClass="profile-info-value"/></VBox><VBox styleClass="profile-info-card"><Label text="ACCOUNT ROLE" styleClass="profile-info-label"/><Label fx:id="profileRoleValue" styleClass="profile-info-value"/></VBox></FlowPane></VBox>
+       <VBox spacing="10" VBox.vgrow="ALWAYS" styleClass="profile-gallery-section"><HBox alignment="CENTER_LEFT"><VBox spacing="2"><Label text="Your gallery" styleClass="profile-section-title"/><Label fx:id="profileGalleryCount" text="0 memories" styleClass="muted"/></VBox><Region HBox.hgrow="ALWAYS"/><Button text="➕ Add photos or GIFs" onAction="#chooseProfileGalleryMedia" styleClass="profile-gallery-upload"/></HBox><Label text="Share photos or animated GIFs that make this space yours." styleClass="profile-gallery-caption"/><TilePane fx:id="profileGalleryGrid" prefColumns="4" prefTileWidth="162" prefTileHeight="162" hgap="12" vgap="12" styleClass="profile-gallery-grid"/><VBox fx:id="profileGalleryEmpty" spacing="6" styleClass="profile-gallery-empty"><Label text="Your gallery is ready" styleClass="empty-feed-title"/><Label text="Add a photo or GIF to fill this space with your campus memories." wrapText="true" styleClass="muted"/></VBox></VBox>
+      </VBox>
+     </content></ScrollPane>
     </Tab>
    </tabs>
   </TabPane>
+  <Pane fx:id="motionLineOverlay" mouseTransparent="true" pickOnBounds="false" styleClass="motion-line-overlay"/>
+  </StackPane>
  </center>
 </BorderPane>

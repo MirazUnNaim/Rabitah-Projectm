@@ -12,8 +12,9 @@ spring:
     properties:
       hibernate.jdbc.time_zone: UTC
   servlet.multipart:
-    max-file-size: 50MB
-    max-request-size: 52MB
+    # Posts can contain several photos or videos. Limits here match PostController.
+    max-file-size: 100MB
+    max-request-size: 500MB
   flyway:
     enabled: true
   data:
@@ -27,7 +28,9 @@ management:
   health.redis.enabled: false
 rabitah:
   seed:
-    students-per-section-year: ${RABITAH_STUDENTS_PER_SECTION_YEAR:30}
+    students-per-section-year: ${RABITAH_STUDENTS_PER_SECTION_YEAR:60}
+    demo-student-accounts: ${RABITAH_SEED_DEMO_STUDENT_ACCOUNTS:false}
+    credentials-export: ${RABITAH_SEED_CREDENTIAL_EXPORT:./generated/demo-student-credentials.csv}
   security:
     jwt-secret: ${RABITAH_JWT_SECRET:}
     access-minutes: 30

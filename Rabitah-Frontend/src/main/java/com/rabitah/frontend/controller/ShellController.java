@@ -1,9 +1,11 @@
 package com.rabitah.frontend.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rabitah.frontend.AppContext;
 import com.rabitah.frontend.model.AuthResponse;
 import java.awt.Desktop;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.net.URLEncoder;
@@ -12,25 +14,36 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.Year;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import javafx.animation.Animation;
 import javafx.animation.FadeTransition;
+import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
 import javafx.animation.ParallelTransition;
+import javafx.animation.PauseTransition;
 import javafx.animation.Timeline;
 import javafx.animation.TranslateTransition;
 import javafx.application.Platform;
+import javafx.scene.Cursor;
+import javafx.embed.swing.SwingFXUtils;
 import javafx.fxml.FXML;
+import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.CacheHint;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
@@ -50,19 +63,25 @@ import javafx.scene.control.TextField;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.input.ScrollEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.TilePane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Circle;
+import javafx.scene.shape.Rectangle;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.StageStyle;
 import javafx.stage.Window;
 import javafx.util.Duration;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
 
 /** The main desktop workspace. Chat polling is a reliable fallback when sockets reconnect. */
 public final class ShellController {
@@ -70,6 +89,8 @@ public final class ShellController {
     private final Map<String, String> paperIds = new LinkedHashMap<>();
     private final Map<String, String> paperFiles = new LinkedHashMap<>();
     private final Map<String, ChatPerson> chatPeople = new LinkedHashMap<>();
+    private final Map<String, CommunityRoom> communityRooms = new LinkedHashMap<>();
+    private final Map<String, JsonNode> noticeItems = new LinkedHashMap<>();
     private final Map<String, Image> chatMediaPreviews = new ConcurrentHashMap<>();
     private final Map<String, Image> chatProfilePhotos = new ConcurrentHashMap<>();
     private final Map<String, Image> userAvatarPhotos = new ConcurrentHashMap<>();
@@ -79,7 +100,10 @@ public final class ShellController {
     private final Map<String, String> courses = new LinkedHashMap<>();
     private final Map<String, String> pendingUsers = new LinkedHashMap<>();
     private final Map<String, String> pendingPosts = new LinkedHashMap<>();
+    private final Map<String, JsonNode> pendingPostRequests = new LinkedHashMap<>();
     private final Map<String, String> pendingPapers = new LinkedHashMap<>();
+    private final Map<String, JsonNode> pendingPaperRequests = new LinkedHashMap<>();
+    private final Map<String, String> pendingPasswordResets = new LinkedHashMap<>();
 
     private String conversationId;
     private String selectedChatLoginId;
@@ -87,12 +111,30 @@ public final class ShellController {
     private String renderedConversationId;
     private String communityId;
     private String renderedCommunityId;
+    private String activeNoticeId;
     private Path selectedChatMedia;
     private Path selectedCommunityMedia;
+    private Path selectedNoticePdf;
     private boolean scrollChatToLatest;
     private boolean scrollCommunityToLatest;
+    private double noticeZoom = 1.0;
     private Timeline approvalPolling;
     private Timeline chatPolling;
+    private Timeline catRoamingAnimation;
+    private PauseTransition catResizeDebounce;
+    private final Map<Node, Animation> activeSurfaceMotions = new WeakHashMap<>();
+    private final Map<ScrollPane, Timeline> smoothScrollAnimations = new WeakHashMap<>();
+    private final Map<ScrollPane, Double> smoothScrollTargets = new WeakHashMap<>();
+    private final Map<ScrollPane, Timeline> scrollLineAnimations = new WeakHashMap<>();
+    private final Map<ScrollPane, Rectangle> scrollLines = new WeakHashMap<>();
+    private final Map<ScrollPane, Long> lastScrollLineNanos = new WeakHashMap<>();
+    private final Set<Node> hoverLineTargets = Collections.newSetFromMap(new WeakHashMap<>());
+    private Timeline tabLineAnimation;
+    private Timeline hoverLineAnimation;
+    private Rectangle tabMotionLine;
+    private Rectangle hoverMotionLine;
+    private Node activeHoverLineTarget;
+    private int activeTabIndex = -1;
     private AutoCloseable realtimeSubscription;
     private Dialog<Void> activePostDialog;
     private String activePostId;
@@ -102,6 +144,8 @@ public final class ShellController {
     private record ChatPerson(String id, String loginId, String nickname, String department, String section,
                               Integer academicYear, int unreadCount, String lastMessage,
                               String lastMessageAt, boolean hasProfilePhoto, String avatarVersion) {}
+
+    private record CommunityRoom(String id, String name, String type) {}
 
     @FXML private Label welcome;
     @FXML private Label feedStatus;
@@ -120,10 +164,21 @@ public final class ShellController {
     @FXML private Label chatEmptyCopy;
     @FXML private Label communityName;
     @FXML private Label communityAttachmentStatus;
-    @FXML private Label profileDetails;
+    @FXML private Label noticeSummary;
+    @FXML private Label noticeDetailTitle;
+    @FXML private Label noticeDetailMeta;
+    @FXML private Label noticeZoomLabel;
+    @FXML private Label noticePdfStatus;
+    @FXML private Label noticeUploadStatus;
     @FXML private Label profileInitial;
     @FXML private Label profileName;
     @FXML private Label profilePhotoStatus;
+    @FXML private Label profileStudentIdValue;
+    @FXML private Label profileDepartmentValue;
+    @FXML private Label profileSectionValue;
+    @FXML private Label profileYearValue;
+    @FXML private Label profileRoleValue;
+    @FXML private Label profileGalleryCount;
     @FXML private Label paperStatus;
     @FXML private Label approvalSummary;
     @FXML private Label serverLabel;
@@ -131,6 +186,7 @@ public final class ShellController {
     @FXML private ImageView feedAvatarPhoto;
     @FXML private ImageView chatReceiverPhoto;
     @FXML private ImageView chatProfilePhoto;
+    @FXML private ImageView topbarCat;
     @FXML private TextArea noticeBody;
     @FXML private TextField noticeTitle;
     @FXML private TextField paperTitle;
@@ -146,12 +202,20 @@ public final class ShellController {
     @FXML private ListView<String> userApprovalList;
     @FXML private ListView<String> postApprovalList;
     @FXML private ListView<String> paperApprovalList;
+    @FXML private ListView<String> passwordResetApprovalList;
     @FXML private ListView<String> chatUserList;
     @FXML private ComboBox<String> noticeType;
+    @FXML private ComboBox<String> noticeDepartment;
+    @FXML private ComboBox<String> noticeYear;
+    @FXML private ComboBox<String> noticeSection;
     @FXML private ComboBox<String> courseBox;
+    @FXML private ComboBox<String> communityRoomChoice;
     @FXML private Button openPostComposer;
     @FXML private Button publishNoticeButton;
+    @FXML private Button noticeNewButton;
+    @FXML private Button deleteNoticeButton;
     @FXML private Button uploadPaperButton;
+    @FXML private Button loginVisualButton;
     @FXML private Button chatAttachButton;
     @FXML private Button chatSendButton;
     @FXML private Button communityAttachButton;
@@ -165,11 +229,19 @@ public final class ShellController {
     @FXML private VBox communityMessageContainer;
     @FXML private VBox communityEmptyState;
     @FXML private VBox noticeComposer;
+    @FXML private VBox noticePdfPages;
+    @FXML private VBox noticeDetailEmpty;
     @FXML private VBox communityComposer;
+    @FXML private VBox profileGalleryEmpty;
+    @FXML private StackPane catRoamingLane;
+    @FXML private StackPane workspaceStage;
+    @FXML private Pane motionLineOverlay;
     @FXML private ScrollPane feedScroll;
     @FXML private ScrollPane messageScroll;
     @FXML private ScrollPane communityScroll;
+    @FXML private ScrollPane noticePdfScroll;
     @FXML private TilePane sharedMediaGrid;
+    @FXML private TilePane profileGalleryGrid;
 
     public ShellController(AppContext context) {
         this.context = context;
@@ -181,6 +253,7 @@ public final class ShellController {
                 }
                 loadCommunity();
                 refreshFeed();
+                refreshNotices();
             }
         }));
     }
@@ -195,25 +268,31 @@ public final class ShellController {
         feedAvatarPhoto.setClip(new Circle(19, 19, 19));
         feedAvatarPhoto.setVisible(false);
         loadCurrentProfilePhoto();
+        refreshProfileGallery();
+        initialiseTopbarCat();
 
-        noticeType.getItems().setAll("GENERAL", "ACADEMIC", "EXAM", "EVENT", "EMERGENCY");
-        noticeType.setValue("GENERAL");
         boolean admin = user.role().equals("SYSTEM_ADMIN");
-        publishNoticeButton.setDisable(!admin);
-        noticeComposer.setVisible(admin);
-        noticeComposer.setManaged(admin);
+        initialiseNoticeBoard(admin);
+        loginVisualButton.setVisible(admin);
+        loginVisualButton.setManaged(admin);
         if (!admin) {
             mainTabs.getTabs().remove(approvalsTab);
         }
 
         communityComposer.setVisible(user.department() != null);
         communityComposer.setManaged(user.department() != null);
+        communityRoomChoice.setDisable(user.department() == null);
         chatUserList.getSelectionModel().selectedItemProperty().addListener((ignored, oldValue, newValue) -> openConversation());
         chatUserList.setCellFactory(ignored -> chatPersonCell());
         messageContainer.setFillWidth(true);
         communityMessageContainer.setFillWidth(true);
         chatReceiverPhoto.setClip(new Circle(21, 21, 21));
         chatProfilePhoto.setClip(new Circle(36, 36, 36));
+        installSmoothScrolling(feedScroll);
+        installSmoothScrolling(messageScroll);
+        installSmoothScrolling(communityScroll);
+        installSmoothScrolling(noticePdfScroll);
+        installLiveHoverLines(mainTabs);
         setChatComposerEnabled(false);
         clearChatView();
         mainTabs.getSelectionModel().selectedItemProperty().addListener((ignored, oldTab, selectedTab) -> {
@@ -221,6 +300,17 @@ public final class ShellController {
                 refreshChatPeople();
                 refreshMessages();
             }
+            int selectedIndex = selectedTab == null ? activeTabIndex : mainTabs.getTabs().indexOf(selectedTab);
+            boolean movesForward = activeTabIndex < 0 || selectedIndex >= activeTabIndex;
+            animateTabSurface(selectedTab == null ? null : selectedTab.getContent());
+            showTabSweep(movesForward);
+            activeTabIndex = selectedIndex;
+        });
+        Platform.runLater(() -> {
+            Tab selectedTab = mainTabs.getSelectionModel().getSelectedItem();
+            activeTabIndex = mainTabs.getTabs().indexOf(selectedTab);
+            animateTabSurface(selectedTab == null ? null : selectedTab.getContent());
+            showTabSweep(true);
         });
 
         refreshFeed();
@@ -251,6 +341,301 @@ public final class ShellController {
         }
     }
 
+    /** Keeps the mascot inside only the flexible gap between the campus label and connection status. */
+    private void initialiseTopbarCat() {
+        Rectangle laneClip = new Rectangle();
+        laneClip.widthProperty().bind(catRoamingLane.widthProperty());
+        laneClip.heightProperty().bind(catRoamingLane.heightProperty());
+        catRoamingLane.setClip(laneClip);
+        topbarCat.setCache(true);
+        topbarCat.setCacheHint(CacheHint.SPEED);
+        catResizeDebounce = new PauseTransition(Duration.millis(140));
+        catResizeDebounce.setOnFinished(event -> restartTopbarCatRoaming());
+        catRoamingLane.widthProperty().addListener((ignored, oldWidth, newWidth) -> {
+            if (newWidth.doubleValue() > 0) {
+                catResizeDebounce.playFromStart();
+            }
+        });
+        Platform.runLater(this::restartTopbarCatRoaming);
+    }
+
+    private void restartTopbarCatRoaming() {
+        if (catRoamingAnimation != null) {
+            catRoamingAnimation.stop();
+        }
+        double catWidth = Math.max(topbarCat.getBoundsInLocal().getWidth(), topbarCat.getFitHeight());
+        double travel = Math.max(0, catRoamingLane.getWidth() - catWidth - 12);
+        double edge = travel / 2;
+        if (travel < 14) {
+            topbarCat.setTranslateX(0);
+            topbarCat.setTranslateY(0);
+            topbarCat.setRotate(0);
+            topbarCat.setScaleX(1);
+            topbarCat.setScaleY(1);
+            return;
+        }
+
+        Interpolator glide = Interpolator.SPLINE(.38, .02, .62, .98);
+        catRoamingAnimation = new Timeline(
+                catFrame(Duration.ZERO, -edge, 1, -2.5, .985, 1.02, glide),
+                catFrame(Duration.seconds(1.45), -edge * .34, -5, 2.8, 1.045, .97, glide),
+                catFrame(Duration.seconds(3.2), edge, 1, -2.4, .99, 1.02, glide),
+                catFrame(Duration.seconds(4.65), edge * .28, 5, 3.4, 1.045, .97, glide),
+                catFrame(Duration.seconds(6.4), -edge, 1, -2.5, .985, 1.02, glide));
+        catRoamingAnimation.setCycleCount(Timeline.INDEFINITE);
+        catRoamingAnimation.play();
+    }
+
+    private KeyFrame catFrame(Duration at, double x, double y, double rotation, double scaleX, double scaleY,
+                              Interpolator interpolator) {
+        return new KeyFrame(at,
+                new KeyValue(topbarCat.translateXProperty(), x, interpolator),
+                new KeyValue(topbarCat.translateYProperty(), y, interpolator),
+                new KeyValue(topbarCat.rotateProperty(), rotation, interpolator),
+                new KeyValue(topbarCat.scaleXProperty(), scaleX, interpolator),
+                new KeyValue(topbarCat.scaleYProperty(), scaleY, interpolator));
+    }
+
+    /** Adds website-like inertial scrolling without changing the platform's normal mouse-wheel controls. */
+    private void installSmoothScrolling(ScrollPane scrollPane) {
+        scrollPane.addEventFilter(ScrollEvent.SCROLL, event -> {
+            if (event.getDeltaY() == 0 || event.isShiftDown() || scrollPane.getContent() == null) {
+                return;
+            }
+            double range = scrollPane.getContent().getBoundsInLocal().getHeight() - scrollPane.getViewportBounds().getHeight();
+            if (range <= 1) {
+                return;
+            }
+            event.consume();
+            showScrollSweep(scrollPane, event.getDeltaY() < 0);
+            double currentTarget = smoothScrollTargets.getOrDefault(scrollPane, scrollPane.getVvalue());
+            double offset = (event.getDeltaY() / range) * 1.18;
+            double target = Math.max(0, Math.min(1, currentTarget - offset));
+            Timeline previous = smoothScrollAnimations.get(scrollPane);
+            if (previous != null) {
+                previous.stop();
+            }
+            Timeline glide = new Timeline(new KeyFrame(Duration.millis(event.isInertia() ? 110 : 170),
+                    new KeyValue(scrollPane.vvalueProperty(), target, Interpolator.SPLINE(.22, 0, .18, 1))));
+            smoothScrollTargets.put(scrollPane, target);
+            smoothScrollAnimations.put(scrollPane, glide);
+            glide.setOnFinished(done -> {
+                smoothScrollAnimations.remove(scrollPane, glide);
+                smoothScrollTargets.remove(scrollPane);
+            });
+            glide.play();
+        });
+    }
+
+    /** Adds a quiet directional sweep while an area moves, instead of leaving a scroll visually static. */
+    private void showScrollSweep(ScrollPane scrollPane, boolean leftToRight) {
+        if (motionLineOverlay == null || workspaceStage == null || motionLineOverlay.getScene() == null) {
+            return;
+        }
+        long now = System.nanoTime();
+        long last = lastScrollLineNanos.getOrDefault(scrollPane, 0L);
+        if (now - last < 95_000_000L) {
+            return;
+        }
+        lastScrollLineNanos.put(scrollPane, now);
+        Bounds bounds = workspaceBounds(scrollPane);
+        if (bounds == null) {
+            return;
+        }
+        double horizontalPadding = Math.min(26, Math.max(12, bounds.getWidth() * .04));
+        double width = bounds.getWidth() - horizontalPadding * 2;
+        if (width < 70) {
+            return;
+        }
+        double y = leftToRight ? bounds.getMinY() + 15 : bounds.getMaxY() - 16;
+        Rectangle line = scrollLines.computeIfAbsent(scrollPane, ignored -> newMotionLine("scroll-motion-line", 2.0));
+        Timeline previous = scrollLineAnimations.get(scrollPane);
+        if (previous != null) {
+            previous.stop();
+        }
+        Timeline sweep = lineSweep(line, bounds.getMinX() + horizontalPadding, y, width, leftToRight,
+                Duration.millis(340));
+        scrollLineAnimations.put(scrollPane, sweep);
+        sweep.setOnFinished(done -> scrollLineAnimations.remove(scrollPane, sweep));
+        sweep.play();
+    }
+
+    /** A short top edge sweep anchors the existing tab content reveal to the newly selected tab. */
+    private void showTabSweep(boolean leftToRight) {
+        if (motionLineOverlay == null || workspaceStage == null || workspaceStage.getWidth() < 80) {
+            return;
+        }
+        if (tabLineAnimation != null) {
+            tabLineAnimation.stop();
+        }
+        if (tabMotionLine == null) {
+            tabMotionLine = newMotionLine("tab-motion-line", 2.4);
+        }
+        double width = Math.max(70, workspaceStage.getWidth() - 54);
+        tabLineAnimation = lineSweep(tabMotionLine, 27, 49, width, leftToRight, Duration.millis(380));
+        tabLineAnimation.play();
+    }
+
+    /** Gives actionable controls and interactive cards a brief underline that grows into place on hover. */
+    private void installLiveHoverLines(Node root) {
+        if (root == null) {
+            return;
+        }
+        if (isHoverLineTarget(root) && hoverLineTargets.add(root)) {
+            root.addEventHandler(MouseEvent.MOUSE_ENTERED, event -> showHoverLine(root));
+            root.addEventHandler(MouseEvent.MOUSE_EXITED, event -> hideHoverLine(root));
+        }
+        if (root instanceof Parent parent) {
+            parent.getChildrenUnmodifiable().forEach(this::installLiveHoverLines);
+        }
+    }
+
+    private boolean isHoverLineTarget(Node node) {
+        return node instanceof Button
+                || node.getStyleClass().contains("post-card")
+                || node.getStyleClass().contains("chat-person-row")
+                || node.getStyleClass().contains("profile-gallery-tile")
+                || node.getStyleClass().contains("notice-headline-row");
+    }
+
+    private void showHoverLine(Node target) {
+        Bounds bounds = workspaceBounds(target);
+        if (bounds == null || bounds.getWidth() < 24) {
+            return;
+        }
+        if (hoverLineAnimation != null) {
+            hoverLineAnimation.stop();
+        }
+        if (hoverMotionLine == null) {
+            hoverMotionLine = newMotionLine("hover-motion-line", 1.6);
+        }
+        activeHoverLineTarget = target;
+        double inset = Math.min(10, Math.max(4, bounds.getWidth() * .08));
+        double x = bounds.getMinX() + inset;
+        double width = bounds.getWidth() - inset * 2;
+        double y = Math.min(workspaceStage.getHeight() - 3, bounds.getMaxY() - 3);
+        hoverMotionLine.setX(x);
+        hoverMotionLine.setY(y);
+        hoverMotionLine.setWidth(0);
+        hoverMotionLine.setOpacity(0);
+        hoverLineAnimation = new Timeline(
+                new KeyFrame(Duration.ZERO,
+                        new KeyValue(hoverMotionLine.opacityProperty(), 0, Interpolator.EASE_OUT),
+                        new KeyValue(hoverMotionLine.widthProperty(), 0, Interpolator.EASE_OUT)),
+                new KeyFrame(Duration.millis(165),
+                        new KeyValue(hoverMotionLine.opacityProperty(), .95, Interpolator.EASE_OUT),
+                        new KeyValue(hoverMotionLine.widthProperty(), width, Interpolator.SPLINE(.22, 0, .18, 1))));
+        hoverLineAnimation.play();
+    }
+
+    private void hideHoverLine(Node target) {
+        if (target != activeHoverLineTarget || hoverMotionLine == null) {
+            return;
+        }
+        if (hoverLineAnimation != null) {
+            hoverLineAnimation.stop();
+        }
+        hoverLineAnimation = new Timeline(new KeyFrame(Duration.millis(120),
+                new KeyValue(hoverMotionLine.opacityProperty(), 0, Interpolator.EASE_OUT)));
+        hoverLineAnimation.setOnFinished(done -> {
+            if (activeHoverLineTarget == target) {
+                activeHoverLineTarget = null;
+            }
+        });
+        hoverLineAnimation.play();
+    }
+
+    private Rectangle newMotionLine(String styleClass, double height) {
+        Rectangle line = new Rectangle(0, 0, 0, height);
+        line.getStyleClass().add(styleClass);
+        line.setArcWidth(8);
+        line.setArcHeight(8);
+        line.setMouseTransparent(true);
+        line.setManaged(false);
+        motionLineOverlay.getChildren().add(line);
+        return line;
+    }
+
+    private Timeline lineSweep(Rectangle line, double x, double y, double width, boolean leftToRight, Duration duration) {
+        double startX = leftToRight ? x : x + width;
+        return new Timeline(
+                new KeyFrame(Duration.ZERO,
+                        new KeyValue(line.xProperty(), startX, Interpolator.DISCRETE),
+                        new KeyValue(line.yProperty(), y, Interpolator.DISCRETE),
+                        new KeyValue(line.widthProperty(), 0, Interpolator.DISCRETE),
+                        new KeyValue(line.opacityProperty(), .05, Interpolator.DISCRETE)),
+                new KeyFrame(Duration.millis(45), new KeyValue(line.opacityProperty(), .9, Interpolator.EASE_OUT)),
+                new KeyFrame(duration,
+                        new KeyValue(line.xProperty(), x, Interpolator.SPLINE(.22, 0, .18, 1)),
+                        new KeyValue(line.widthProperty(), width, Interpolator.SPLINE(.22, 0, .18, 1)),
+                        new KeyValue(line.opacityProperty(), .78, Interpolator.EASE_OUT)),
+                new KeyFrame(duration.add(Duration.millis(150)),
+                        new KeyValue(line.opacityProperty(), 0, Interpolator.EASE_IN)));
+    }
+
+    private Bounds workspaceBounds(Node node) {
+        if (workspaceStage == null || workspaceStage.getScene() == null || node.getScene() == null) {
+            return null;
+        }
+        Bounds sceneBounds = node.localToScene(node.getBoundsInLocal());
+        if (sceneBounds == null) {
+            return null;
+        }
+        javafx.geometry.Point2D topLeft = workspaceStage.sceneToLocal(sceneBounds.getMinX(), sceneBounds.getMinY());
+        javafx.geometry.Point2D bottomRight = workspaceStage.sceneToLocal(sceneBounds.getMaxX(), sceneBounds.getMaxY());
+        if (bottomRight.getX() < 0 || topLeft.getX() > workspaceStage.getWidth()
+                || bottomRight.getY() < 0 || topLeft.getY() > workspaceStage.getHeight()) {
+            return null;
+        }
+        return new javafx.geometry.BoundingBox(topLeft.getX(), topLeft.getY(),
+                Math.max(0, bottomRight.getX() - topLeft.getX()), Math.max(0, bottomRight.getY() - topLeft.getY()));
+    }
+
+    /** A compact slide-and-fade for every workspace tab, mirroring the reference's page reveals. */
+    private void animateTabSurface(Node surface) {
+        if (surface == null) {
+            return;
+        }
+        surface.setOpacity(0);
+        surface.setTranslateX(14);
+        FadeTransition fade = new FadeTransition(Duration.millis(210), surface);
+        fade.setToValue(1);
+        fade.setInterpolator(Interpolator.EASE_OUT);
+        TranslateTransition slide = new TranslateTransition(Duration.millis(250), surface);
+        slide.setToX(0);
+        slide.setInterpolator(Interpolator.EASE_BOTH);
+        playSurfaceMotion(surface, new ParallelTransition(fade, slide));
+    }
+
+    /** Staggered entrance avoids a hard visual jump when feed cards or a new community room loads. */
+    private void animateStaggeredReveal(List<Node> nodes, int maximum, int stepMillis) {
+        int visibleCount = Math.min(nodes.size(), maximum);
+        for (int index = 0; index < visibleCount; index++) {
+            Node node = nodes.get(index);
+            node.setOpacity(0);
+            node.setTranslateY(13);
+            FadeTransition fade = new FadeTransition(Duration.millis(190), node);
+            fade.setToValue(1);
+            fade.setDelay(Duration.millis((long) index * stepMillis));
+            fade.setInterpolator(Interpolator.EASE_OUT);
+            TranslateTransition rise = new TranslateTransition(Duration.millis(230), node);
+            rise.setToY(0);
+            rise.setDelay(Duration.millis((long) index * stepMillis));
+            rise.setInterpolator(Interpolator.EASE_BOTH);
+            playSurfaceMotion(node, new ParallelTransition(fade, rise));
+        }
+    }
+
+    /** Stops stale reveal animations before starting the next one, preventing visual stalls on quick updates. */
+    private void playSurfaceMotion(Node node, Animation motion) {
+        Animation previous = activeSurfaceMotions.put(node, motion);
+        if (previous != null) {
+            previous.stop();
+        }
+        motion.setOnFinished(event -> activeSurfaceMotions.remove(node, motion));
+        motion.play();
+    }
+
     // Social feed -------------------------------------------------------------------------------
 
     @FXML
@@ -268,6 +653,7 @@ public final class ShellController {
             } else {
                 feedStatus.setText(count + (count == 1 ? " post in your feed" : " posts in your feed"));
             }
+            animateStaggeredReveal(feedContainer.getChildren(), 7, 44);
         });
     }
 
@@ -321,12 +707,12 @@ public final class ShellController {
         body.setPrefRowCount(6);
         body.getStyleClass().add("post-composer-body");
 
-        final Path[] selectedMedia = new Path[1];
-        Label attachment = new Label("No photo or video selected");
+        List<Path> selectedMedia = new ArrayList<>();
+        Label attachment = new Label("No photos or videos selected");
         attachment.getStyleClass().add("attachment-name");
         Button addMedia = new Button("Add photo or video");
         addMedia.getStyleClass().add("add-media-button");
-        Button removeMedia = new Button("Remove");
+        Button removeMedia = new Button("Clear all");
         removeMedia.getStyleClass().add("remove-media-button");
         removeMedia.setVisible(false);
         removeMedia.setManaged(false);
@@ -334,40 +720,54 @@ public final class ShellController {
         attachmentRow.setAlignment(Pos.CENTER_LEFT);
         attachmentRow.getStyleClass().add("attachment-row");
         HBox.setHgrow(attachment, Priority.ALWAYS);
+        Label error = new Label();
+        error.getStyleClass().add("composer-error");
+        error.setWrapText(true);
 
         Runnable updateAttachment = () -> {
-            boolean hasMedia = selectedMedia[0] != null;
-            attachment.setText(hasMedia ? selectedMedia[0].getFileName().toString() : "No photo or video selected");
+            boolean hasMedia = !selectedMedia.isEmpty();
+            attachment.setText(describePostMedia(selectedMedia));
             removeMedia.setVisible(hasMedia);
             removeMedia.setManaged(hasMedia);
         };
         addMedia.setOnAction(event -> {
-            Path file = choosePostMedia(dialog);
-            if (file != null) {
-                selectedMedia[0] = file;
+            List<Path> files = choosePostMedia(dialog);
+            int skipped = 0;
+            for (Path file : files) {
+                if (!selectedMedia.contains(file)) {
+                    if (selectedMedia.size() == 10) {
+                        skipped++;
+                    } else {
+                        selectedMedia.add(file);
+                    }
+                }
+            }
+            if (!files.isEmpty()) {
                 updateAttachment.run();
+            }
+            if (skipped > 0) {
+                error.setText("A post can include up to 10 photos or videos.");
+            } else if (!files.isEmpty()) {
+                error.setText("");
             }
         });
         removeMedia.setOnAction(event -> {
-            selectedMedia[0] = null;
+            selectedMedia.clear();
             updateAttachment.run();
         });
 
-        Label error = new Label();
-        error.getStyleClass().add("composer-error");
-        error.setWrapText(true);
         Button publish = new Button("Post");
         publish.setMaxWidth(Double.MAX_VALUE);
         publish.getStyleClass().add("post-submit-button");
         publish.setOnAction(event -> {
             String text = body.getText().trim();
-            if (text.isBlank() && selectedMedia[0] == null) {
+            if (text.isBlank() && selectedMedia.isEmpty()) {
                 error.setText("Write something or add a photo or video first.");
                 return;
             }
             publish.setDisable(true);
             error.setText("");
-            publishPost(text, selectedMedia[0], created -> {
+            publishPost(text, List.copyOf(selectedMedia), created -> {
                 dismissPopup(dialog);
                 feedStatus.setText("PENDING".equals(created.path("status").asText())
                         ? "Your post was submitted for review." : "Your post is now in the feed.");
@@ -390,25 +790,33 @@ public final class ShellController {
         dialog.show();
     }
 
-    private Path choosePostMedia(Dialog<?> dialog) {
+    private List<Path> choosePostMedia(Dialog<?> dialog) {
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("Choose a photo, video, or media file");
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("All media files", "*.*"));
+        chooser.setTitle("Choose photos or videos");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("All files — photos and any video format", "*.*"));
         Window owner = dialog.getDialogPane().getScene() == null ? null : dialog.getDialogPane().getScene().getWindow();
-        File file = chooser.showOpenDialog(owner);
-        return file == null ? null : file.toPath();
+        List<File> files = chooser.showOpenMultipleDialog(owner);
+        return files == null ? List.of() : files.stream().map(File::toPath).toList();
     }
 
-    private void publishPost(String body, Path media, Consumer<JsonNode> success, Consumer<String> failure) {
+    private String describePostMedia(List<Path> media) {
+        if (media.isEmpty()) {
+            return "No photos or videos selected";
+        }
+        String names = media.stream().limit(3).map(path -> path.getFileName().toString()).reduce((first, second) -> first + ", " + second).orElse("");
+        return media.size() == 1 ? names : media.size() + " files selected: " + names + (media.size() > 3 ? "…" : "");
+    }
+
+    private void publishPost(String body, List<Path> media, Consumer<JsonNode> success, Consumer<String> failure) {
         var user = context.session().current().user();
         Map<String, String> request = new LinkedHashMap<>();
         request.put("body", body);
         request.put("department", valueOrEmpty(user.department()));
         request.put("section", valueOrEmpty(user.section()));
         request.put("academicYear", valueOrEmpty(user.academicYear()));
-        CompletableFuture<JsonNode> action = media == null
+        CompletableFuture<JsonNode> action = media.isEmpty()
                 ? context.api().postJson("posts", request)
-                : context.api().uploadFile("posts", request, media, mediaType(media));
+                : context.api().uploadFiles("posts", request, media);
         action.whenComplete((created, error) -> Platform.runLater(() -> {
             if (error != null) {
                 failure.accept(message(error));
@@ -484,6 +892,7 @@ public final class ShellController {
                     commentButton(post));
             card.getChildren().addAll(separator, actions);
         }
+        installLiveHoverLines(card);
         return card;
     }
 
@@ -523,6 +932,10 @@ public final class ShellController {
     }
 
     private StackPane imageAttachment(JsonNode post, JsonNode item, VBox card) {
+        return imageAttachment(postMediaPath(post, item));
+    }
+
+    private StackPane imageAttachment(String path) {
         StackPane frame = new StackPane();
         frame.getStyleClass().add("image-attachment");
         frame.setMinHeight(150);
@@ -535,7 +948,6 @@ public final class ShellController {
         Label loading = new Label("Loading photo…");
         loading.getStyleClass().add("media-loading");
         frame.getChildren().addAll(imageView, loading);
-        String path = postMediaPath(post, item);
         context.api().getBytes(path).thenApplyAsync(bytes ->
                 new Image(new ByteArrayInputStream(bytes), 1024, 600, true, true), context.executor()).whenComplete((image, error) -> Platform.runLater(() -> {
             if (error != null) {
@@ -890,6 +1302,14 @@ public final class ShellController {
                                  String styleClass, double size) {
         Label initials = avatar(name, styleClass);
         StackPane holder = new StackPane(initials);
+        if (userId != null && !userId.isBlank()) {
+            holder.getStyleClass().add("profile-avatar-link");
+            holder.setCursor(Cursor.HAND);
+            holder.setOnMouseClicked(event -> {
+                event.consume();
+                openUserProfile(userId);
+            });
+        }
         if (!hasPhoto || userId == null || userId.isBlank()) {
             return holder;
         }
@@ -917,6 +1337,209 @@ public final class ShellController {
         return holder;
     }
 
+    @FXML
+    private void openSelectedChatProfile() {
+        ChatPerson person = selectedChatLoginId == null ? null : chatPeople.get(selectedChatLoginId);
+        if (person != null) {
+            openUserProfile(person.id());
+        }
+    }
+
+    @FXML
+    private void openCurrentUserProfile() {
+        openUserProfile(context.session().current().user().id().toString());
+    }
+
+    /** Opens the same read-only campus profile from every avatar surface. */
+    private void openUserProfile(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return;
+        }
+        Dialog<Void> popup = new Dialog<>();
+        preparePopup(popup);
+        popup.setTitle("Campus profile");
+        popup.setResizable(true);
+        popup.getDialogPane().setPrefWidth(760);
+        popup.getDialogPane().setPrefHeight(650);
+
+        VBox loading = new VBox(10, new Label("Loading campus profile…"));
+        loading.setAlignment(Pos.CENTER);
+        loading.setPadding(new Insets(38));
+        loading.getStyleClass().add("profile-view-loading");
+        popup.getDialogPane().setContent(loading);
+        popup.show();
+
+        context.api().getJson("profile/users/" + userId).whenComplete((profile, error) -> Platform.runLater(() -> {
+            if (!popup.isShowing()) {
+                return;
+            }
+            if (error != null) {
+                Label unavailable = new Label("This profile is unavailable: " + message(error));
+                unavailable.setWrapText(true);
+                unavailable.getStyleClass().add("profile-view-loading");
+                popup.getDialogPane().setContent(unavailable);
+                return;
+            }
+            popup.getDialogPane().setContent(profileViewer(profile, userId, popup));
+        }));
+    }
+
+    private ScrollPane profileViewer(JsonNode profile, String userId, Dialog<?> popup) {
+        String name = text(profile, "nickname", "Campus member");
+        String identifier = text(profile, "studentId", text(profile, "loginId", "Campus member"));
+        VBox content = new VBox(16);
+        content.setPadding(new Insets(20));
+        content.getStyleClass().add("profile-view-content");
+
+        Button close = new Button("×");
+        close.getStyleClass().add("profile-view-close");
+        close.setOnAction(event -> dismissPopup(popup));
+        HBox titleBar = new HBox();
+        Label title = new Label("Campus profile");
+        title.getStyleClass().add("profile-view-title");
+        Region titleSpacer = new Region();
+        HBox.setHgrow(titleSpacer, Priority.ALWAYS);
+        titleBar.getChildren().addAll(title, titleSpacer, close);
+
+        HBox hero = new HBox(14, viewedProfileAvatar(profile, userId), profileViewerHeading(name, identifier));
+        hero.setAlignment(Pos.CENTER_LEFT);
+        hero.getStyleClass().add("profile-view-hero");
+
+        TilePane facts = new TilePane(10, 10);
+        facts.setPrefColumns(3);
+        facts.setPrefTileWidth(208);
+        facts.setPrefTileHeight(70);
+        facts.getStyleClass().add("profile-view-facts");
+        facts.getChildren().addAll(
+                profileViewerFact("CAMPUS ID", identifier),
+                profileViewerFact("DEPARTMENT", text(profile, "department", "Not specified")),
+                profileViewerFact("SECTION", text(profile, "section", "Not specified")),
+                profileViewerFact("ACADEMIC YEAR", text(profile, "academicYear", "Not specified")),
+                profileViewerFact("ACCOUNT ROLE", text(profile, "role", "Campus member").replace('_', ' ')));
+
+        Label galleryTitle = new Label(name + "’s gallery");
+        galleryTitle.getStyleClass().add("profile-view-gallery-title");
+        Label galleryHint = new Label("Photos and animated GIFs");
+        galleryHint.getStyleClass().add("muted");
+        HBox galleryHeader = new HBox(8, galleryTitle, galleryHint);
+        galleryHeader.setAlignment(Pos.CENTER_LEFT);
+        TilePane gallery = new TilePane(11, 11);
+        gallery.setPrefColumns(4);
+        gallery.setPrefTileWidth(145);
+        gallery.setPrefTileHeight(145);
+        gallery.getStyleClass().add("profile-view-gallery");
+        Label galleryEmpty = new Label("No shared gallery items yet.");
+        galleryEmpty.getStyleClass().add("profile-view-gallery-empty");
+        VBox gallerySection = new VBox(9, galleryHeader, gallery, galleryEmpty);
+        gallerySection.getStyleClass().add("profile-view-gallery-section");
+
+        content.getChildren().addAll(titleBar, hero, facts, gallerySection);
+        loadViewedProfileGallery(userId, gallery, galleryEmpty, popup);
+        ScrollPane scroll = new ScrollPane(content);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.getStyleClass().add("profile-view-scroll");
+        return scroll;
+    }
+
+    private VBox profileViewerHeading(String name, String identifier) {
+        Label displayName = new Label(name);
+        displayName.getStyleClass().add("profile-view-name");
+        Label id = new Label("ID: " + identifier);
+        id.getStyleClass().add("profile-view-id");
+        return new VBox(4, displayName, id);
+    }
+
+    private StackPane viewedProfileAvatar(JsonNode profile, String userId) {
+        String name = text(profile, "nickname", "Campus member");
+        Label initials = avatar(name, "profile-view-avatar");
+        StackPane holder = new StackPane(initials);
+        boolean hasPhoto = profile.path("hasProfilePhoto").asBoolean(false);
+        if (!hasPhoto) {
+            return holder;
+        }
+        ImageView photo = new ImageView();
+        photo.setFitWidth(82);
+        photo.setFitHeight(82);
+        photo.setPreserveRatio(true);
+        photo.setClip(new Circle(41, 41, 41));
+        photo.setVisible(false);
+        holder.getChildren().add(photo);
+        String path = avatarPhotoPath(userId, nullableText(profile, "avatarVersion"));
+        context.api().getBytes(path).thenApplyAsync(bytes ->
+                new Image(new ByteArrayInputStream(bytes), 164, 164, true, true), context.executor()).whenComplete((image, error) -> {
+            if (error == null && image != null && !image.isError()) {
+                Platform.runLater(() -> showAvatarPhoto(photo, initials, image));
+            }
+        });
+        return holder;
+    }
+
+    private VBox profileViewerFact(String label, String value) {
+        Label heading = new Label(label);
+        heading.getStyleClass().add("profile-view-fact-label");
+        Label detail = new Label(value);
+        detail.setWrapText(true);
+        detail.getStyleClass().add("profile-view-fact-value");
+        VBox card = new VBox(4, heading, detail);
+        card.getStyleClass().add("profile-view-fact");
+        return card;
+    }
+
+    private void loadViewedProfileGallery(String userId, TilePane gallery, Label empty, Dialog<?> popup) {
+        context.api().getJson("profile/users/" + userId + "/gallery").whenComplete((items, error) -> Platform.runLater(() -> {
+            if (!popup.isShowing() || error != null) {
+                return;
+            }
+            gallery.getChildren().clear();
+            for (JsonNode item : items) {
+                gallery.getChildren().add(viewedProfileGalleryTile(userId, item));
+            }
+            empty.setVisible(items.isEmpty());
+            empty.setManaged(items.isEmpty());
+        }));
+    }
+
+    /** Animated GIFs retain their JavaFX frame timeline here, just as they do in My Profile. */
+    private StackPane viewedProfileGalleryTile(String userId, JsonNode item) {
+        String mediaId = item.path("id").asText();
+        String name = text(item, "originalName", "Gallery item");
+        boolean gif = text(item, "contentType", "").equalsIgnoreCase("image/gif") || name.toLowerCase().endsWith(".gif");
+        StackPane tile = new StackPane();
+        tile.setPrefSize(145, 145);
+        tile.setMinSize(145, 145);
+        tile.setMaxSize(145, 145);
+        tile.getStyleClass().add("profile-view-gallery-tile");
+        Label fallback = new Label(gif ? "GIF" : "Photo");
+        fallback.getStyleClass().add("profile-gallery-loading");
+        ImageView image = new ImageView();
+        image.setFitWidth(145);
+        image.setFitHeight(145);
+        image.setPreserveRatio(false);
+        image.setSmooth(true);
+        Rectangle clip = new Rectangle(145, 145);
+        clip.setArcWidth(22);
+        clip.setArcHeight(22);
+        image.setClip(clip);
+        tile.getChildren().addAll(fallback, image);
+        if (gif) {
+            Label badge = new Label("GIF");
+            badge.getStyleClass().add("profile-gallery-gif");
+            StackPane.setAlignment(badge, Pos.TOP_LEFT);
+            tile.getChildren().add(badge);
+        }
+        context.api().getBytes("profile/users/" + userId + "/gallery/" + mediaId).thenApplyAsync(bytes ->
+                new Image(new ByteArrayInputStream(bytes), 290, 290, false, false), context.executor()).whenComplete((loaded, error) -> {
+            if (error == null && loaded != null && !loaded.isError()) {
+                Platform.runLater(() -> {
+                    image.setImage(loaded);
+                    fallback.setVisible(false);
+                });
+            }
+        });
+        return tile;
+    }
+
     private void showAvatarPhoto(ImageView photo, Label initials, Image image) {
         photo.setImage(image);
         photo.setVisible(true);
@@ -935,9 +1558,11 @@ public final class ShellController {
         profileInitial.setText(initials(user.nickname()));
         profileName.setText(user.nickname());
         profileNicknameInput.setText(user.nickname());
-        profileDetails.setText("Student ID  " + value(user.studentId()) + "\nDepartment  " + value(user.department())
-                + "\nSection  " + value(user.section()) + "   •   Academic year  " + value(user.academicYear())
-                + "\nRole  " + user.role().replace('_', ' '));
+        profileStudentIdValue.setText(value(user.studentId()));
+        profileDepartmentValue.setText(value(user.department()));
+        profileSectionValue.setText(value(user.section()));
+        profileYearValue.setText(value(user.academicYear()));
+        profileRoleValue.setText(user.role().replace('_', ' '));
         feedAvatar.setText(initials(user.nickname()));
         openPostComposer.setText("What's on your mind, " + user.nickname() + "?");
     }
@@ -1009,27 +1634,251 @@ public final class ShellController {
 
     // Notices, papers, chat, community, and profile ------------------------------------------------
 
+    private void initialiseNoticeBoard(boolean admin) {
+        noticeType.getItems().setAll("GENERAL", "ACADEMIC", "EXAM", "EVENT", "EMERGENCY");
+        noticeType.setValue("GENERAL");
+        noticeDepartment.getItems().setAll("All departments", "MPE", "EEE", "CSE", "CEE");
+        noticeDepartment.setValue("All departments");
+        noticeYear.getItems().setAll("All academic years", "1", "2", "3", "4");
+        noticeYear.setValue("All academic years");
+        noticeSection.getItems().setAll("All sections", "A", "B");
+        noticeSection.setValue("All sections");
+        noticeNewButton.setVisible(admin);
+        noticeNewButton.setManaged(admin);
+        publishNoticeButton.setDisable(!admin);
+        noticeComposer.setVisible(false);
+        noticeComposer.setManaged(false);
+        deleteNoticeButton.setVisible(false);
+        deleteNoticeButton.setManaged(false);
+        noticeList.getSelectionModel().selectedItemProperty().addListener((ignored, oldId, id) -> openNotice(id));
+        noticeList.setCellFactory(ignored -> noticeCell());
+        setNoticeDetailEmpty(true);
+    }
+
     @FXML
     private void refreshNotices() {
         run(context.api().getJson("notices"), json -> {
+            String selected = noticeList.getSelectionModel().getSelectedItem();
             noticeList.getItems().clear();
+            noticeItems.clear();
             for (JsonNode notice : json) {
-                noticeList.getItems().add("[" + notice.path("type").asText() + "]  " + notice.path("title").asText()
-                        + "\n" + notice.path("body").asText() + "\nFor " + notice.path("department").asText("all students"));
+                String id = notice.path("id").asText();
+                noticeItems.put(id, notice);
+                noticeList.getItems().add(id);
+            }
+            noticeSummary.setText(json.size() + (json.size() == 1 ? " official notice" : " official notices"));
+            if (selected != null && noticeItems.containsKey(selected)) {
+                noticeList.getSelectionModel().select(selected);
             }
         });
     }
 
     @FXML
+    private void toggleNoticeComposer() {
+        boolean visible = !noticeComposer.isVisible();
+        noticeComposer.setVisible(visible);
+        noticeComposer.setManaged(visible);
+        if (visible) {
+            noticeTitle.requestFocus();
+        }
+    }
+
+    @FXML
+    private void chooseNoticePdf() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Attach notice PDF");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF files", "*.pdf"));
+        File file = chooser.showOpenDialog(noticeTitle.getScene().getWindow());
+        if (file != null) {
+            selectedNoticePdf = file.toPath();
+            noticeUploadStatus.setText("Attached: " + file.getName());
+        }
+    }
+
+    @FXML
     private void publishNotice() {
-        if (noticeTitle.getText().isBlank() || noticeBody.getText().isBlank()) {
+        if (noticeTitle.getText().isBlank() || (noticeBody.getText().isBlank() && selectedNoticePdf == null)) {
+            noticeUploadStatus.setText("Add a title and either details or a PDF.");
             return;
         }
-        run(context.api().postJson("notices", Map.of("title", noticeTitle.getText(), "body", noticeBody.getText(), "type", noticeType.getValue())), created -> {
+        Map<String, String> request = new LinkedHashMap<>();
+        request.put("title", noticeTitle.getText().trim());
+        request.put("body", noticeBody.getText().trim());
+        request.put("type", noticeType.getValue());
+        request.put("department", selectionValue(noticeDepartment, "All departments"));
+        request.put("academicYear", selectionValue(noticeYear, "All academic years"));
+        request.put("section", selectionValue(noticeSection, "All sections"));
+        CompletableFuture<JsonNode> action = selectedNoticePdf == null
+                ? context.api().postJson("notices", request)
+                : context.api().uploadFile("notices", request, selectedNoticePdf, "application/pdf");
+        action.whenComplete((created, error) -> Platform.runLater(() -> {
+            if (error != null) {
+                noticeUploadStatus.setText("Could not publish: " + message(error));
+                return;
+            }
             noticeTitle.clear();
             noticeBody.clear();
+            selectedNoticePdf = null;
+            noticeUploadStatus.setText("Notice published as a PDF.");
+            noticeComposer.setVisible(false);
+            noticeComposer.setManaged(false);
             refreshNotices();
-        });
+            openNotice(created.path("id").asText());
+        }));
+    }
+
+    private ListCell<String> noticeCell() {
+        return new ListCell<>() {
+            @Override
+            protected void updateItem(String id, boolean empty) {
+                super.updateItem(id, empty);
+                if (empty || id == null || !noticeItems.containsKey(id)) {
+                    setText(null);
+                    setGraphic(null);
+                    return;
+                }
+                JsonNode notice = noticeItems.get(id);
+                Label date = new Label(relative(notice.path("publishedAt").asText()));
+                date.getStyleClass().add("notice-date");
+                Label title = new Label(notice.path("title").asText("Untitled notice"));
+                title.setWrapText(true);
+                title.getStyleClass().add("notice-headline");
+                VBox text = new VBox(4, date, title);
+                HBox.setHgrow(text, Priority.ALWAYS);
+                Label unread = new Label("NEW");
+                unread.getStyleClass().add("notice-unread-badge");
+                boolean isUnread = notice.path("unread").asBoolean(false);
+                unread.setVisible(isUnread);
+                unread.setManaged(isUnread);
+                HBox row = new HBox(10, text, unread);
+                row.setAlignment(Pos.CENTER_LEFT);
+                row.getStyleClass().add("notice-headline-row");
+                if (isUnread) row.getStyleClass().add("unread");
+                installLiveHoverLines(row);
+                setText(null);
+                setGraphic(row);
+            }
+        };
+    }
+
+    private void openNotice(String id) {
+        if (id == null || id.isBlank()) return;
+        context.api().getJson("notices/" + id).whenComplete((notice, error) -> Platform.runLater(() -> {
+            if (error != null) {
+                noticePdfStatus.setText("Could not open notice: " + message(error));
+                return;
+            }
+            activeNoticeId = id;
+            noticeItems.put(id, notice);
+            noticeList.refresh();
+            noticeDetailTitle.setText(notice.path("title").asText("Notice"));
+            noticeDetailMeta.setText(noticeScope(notice) + " · " + relative(notice.path("publishedAt").asText()));
+            boolean canDelete = notice.path("canDelete").asBoolean(false);
+            deleteNoticeButton.setVisible(canDelete);
+            deleteNoticeButton.setManaged(canDelete);
+            setNoticeDetailEmpty(false);
+            renderNoticePdf(notice);
+        }));
+    }
+
+    private void renderNoticePdf(JsonNode notice) {
+        String id = notice.path("id").asText();
+        noticePdfStatus.setText("Loading PDF preview…");
+        context.api().getBytes("notices/" + id + "/pdf").thenApplyAsync(bytes -> renderPdfPages(bytes, noticeZoom), context.executor())
+                .whenComplete((pages, error) -> Platform.runLater(() -> {
+                    if (!id.equals(activeNoticeId)) return;
+                    if (error != null) {
+                        noticePdfStatus.setText("PDF preview unavailable: " + message(error));
+                        return;
+                    }
+                    noticePdfPages.getChildren().clear();
+                    for (Image page : pages) {
+                        ImageView view = new ImageView(page);
+                        view.setPreserveRatio(true);
+                        view.setFitWidth(600 * noticeZoom);
+                        view.getStyleClass().add("notice-pdf-page");
+                        noticePdfPages.getChildren().add(view);
+                    }
+                    noticeZoomLabel.setText(Math.round(noticeZoom * 100) + "%");
+                    noticePdfStatus.setText(pages.size() + (pages.size() == 1 ? " page" : " pages") + " · PDF preview");
+                }));
+    }
+
+    private List<Image> renderPdfPages(byte[] bytes, double zoom) {
+        try (PDDocument document = PDDocument.load(bytes)) {
+            PDFRenderer renderer = new PDFRenderer(document);
+            List<Image> pages = new ArrayList<>();
+            int count = Math.min(document.getNumberOfPages(), 30);
+            for (int page = 0; page < count; page++) {
+                BufferedImage rendered = renderer.renderImageWithDPI(page, (float) (130 * zoom));
+                pages.add(SwingFXUtils.toFXImage(rendered, null));
+            }
+            return pages;
+        } catch (Exception error) {
+            throw new IllegalStateException("Could not render this PDF.", error);
+        }
+    }
+
+    @FXML private void zoomNoticeIn() { setNoticeZoom(noticeZoom + .2); }
+    @FXML private void zoomNoticeOut() { setNoticeZoom(noticeZoom - .2); }
+
+    private void setNoticeZoom(double value) {
+        noticeZoom = Math.max(.6, Math.min(2.4, value));
+        noticeZoomLabel.setText(Math.round(noticeZoom * 100) + "%");
+        JsonNode notice = activeNoticeId == null ? null : noticeItems.get(activeNoticeId);
+        if (notice != null) renderNoticePdf(notice);
+    }
+
+    @FXML
+    private void downloadNoticePdf() {
+        JsonNode notice = activeNoticeId == null ? null : noticeItems.get(activeNoticeId);
+        if (notice == null) return;
+        downloadRemoteAttachment("notices/" + activeNoticeId + "/pdf", text(notice, "filename", "notice.pdf"),
+                noticePdfStatus::setText, noticePdfScroll.getScene().getWindow());
+    }
+
+    @FXML
+    private void deleteSelectedNotice() {
+        if (activeNoticeId == null) return;
+        Alert prompt = new Alert(Alert.AlertType.CONFIRMATION, "Delete this notice permanently from the board?", ButtonType.CANCEL, new ButtonType("Delete", ButtonBar.ButtonData.OK_DONE));
+        preparePopup(prompt);
+        prompt.setTitle("Delete notice");
+        prompt.setHeaderText(null);
+        prompt.showAndWait().filter(choice -> choice.getButtonData() == ButtonBar.ButtonData.OK_DONE).ifPresent(choice ->
+                run(context.api().delete("notices/" + activeNoticeId), ignored -> {
+                    activeNoticeId = null;
+                    noticePdfPages.getChildren().clear();
+                    deleteNoticeButton.setVisible(false);
+                    deleteNoticeButton.setManaged(false);
+                    setNoticeDetailEmpty(true);
+                    refreshNotices();
+                }));
+    }
+
+    private String noticeScope(JsonNode notice) {
+        List<String> scope = new ArrayList<>();
+        String department = nullableText(notice, "department");
+        if (department != null) scope.add(department);
+        JsonNode year = notice.path("academicYear");
+        if (year.isNumber()) scope.add("Year " + year.asInt());
+        String section = nullableText(notice, "section");
+        if (section != null) scope.add("Section " + section);
+        return scope.isEmpty() ? "All campus members" : String.join(" · ", scope);
+    }
+
+    private String selectionValue(ComboBox<String> selector, String allLabel) {
+        String value = selector.getValue();
+        return value == null || value.equals(allLabel) ? "" : value;
+    }
+
+    private void setNoticeDetailEmpty(boolean empty) {
+        noticeDetailEmpty.setVisible(empty);
+        noticeDetailEmpty.setManaged(empty);
+        if (empty) {
+            noticeDetailTitle.setText("Select a notice");
+            noticeDetailMeta.setText("Choose a headline to open its PDF.");
+            noticePdfStatus.setText("");
+        }
     }
 
     @FXML
@@ -1187,6 +2036,7 @@ public final class ShellController {
                     name.getStyleClass().add("chat-person-unread");
                     detail.getStyleClass().add("chat-person-unread");
                 }
+                installLiveHoverLines(row);
                 setText(null);
                 setGraphic(row);
             }
@@ -1362,6 +2212,7 @@ public final class ShellController {
         meta.getStyleClass().add("message-meta");
         bubble.getChildren().add(meta);
         row.getChildren().add(bubble);
+        installLiveHoverLines(row);
         return row;
     }
 
@@ -1649,14 +2500,70 @@ public final class ShellController {
 
     @FXML
     private void refreshCommunity() {
-        context.api().getJson("community/rooms/mine").whenComplete((room, error) -> Platform.runLater(() -> {
+        context.api().getJson("community/rooms/available").whenComplete((rooms, error) -> Platform.runLater(() -> {
             if (error != null) {
+                communityAttachmentStatus.setText("Could not load communities: " + message(error));
                 return;
             }
-            communityId = room.path("id").asText();
-            communityName.setText(room.path("name").asText());
-            loadCommunity();
+            populateCommunityChoices(rooms);
         }));
+    }
+
+    private void populateCommunityChoices(JsonNode rooms) {
+        String currentId = communityId;
+        String selectedChoice = null;
+        String sectionChoice = null;
+        communityRooms.clear();
+        for (JsonNode room : rooms) {
+            String id = room.path("id").asText();
+            String name = room.path("name").asText("Community");
+            String type = room.path("type").asText("SECTION");
+            String choice = "DEPARTMENT".equals(type) ? "Department community · " + name
+                    : "Section community · " + name;
+            communityRooms.put(choice, new CommunityRoom(id, name, type));
+            if (id.equals(currentId)) {
+                selectedChoice = choice;
+            }
+            if (sectionChoice == null && "SECTION".equals(type)) {
+                sectionChoice = choice;
+            }
+        }
+        communityRoomChoice.getItems().setAll(communityRooms.keySet());
+        String choice = selectedChoice != null ? selectedChoice
+                : sectionChoice != null ? sectionChoice : communityRooms.keySet().stream().findFirst().orElse(null);
+        if (choice == null) {
+            communityId = null;
+            communityName.setText("No community is available");
+            return;
+        }
+        communityRoomChoice.setValue(choice);
+        CommunityRoom selected = communityRooms.get(choice);
+        if (selected != null && selected.id().equals(communityId)) {
+            communityName.setText(selected.name());
+            loadCommunity();
+        } else {
+            activateCommunity(choice);
+        }
+    }
+
+    @FXML
+    private void selectCommunity() {
+        activateCommunity(communityRoomChoice.getValue());
+    }
+
+    private void activateCommunity(String choice) {
+        CommunityRoom room = communityRooms.get(choice);
+        if (room == null || room.id().equals(communityId)) {
+            return;
+        }
+        communityId = room.id();
+        communityName.setText(room.name());
+        selectedCommunityMedia = null;
+        communityAttachmentStatus.setText("");
+        renderedCommunityId = null;
+        renderedCommunityMessageIds.clear();
+        communityMessageContainer.getChildren().clear();
+        loadCommunity();
     }
 
     private void loadCommunity() {
@@ -1697,6 +2604,9 @@ public final class ShellController {
         }
         communityEmptyState.setVisible(messages.isEmpty());
         communityEmptyState.setManaged(messages.isEmpty());
+        if (roomChanged && !messages.isEmpty()) {
+            animateStaggeredReveal(communityMessageContainer.getChildren(), 8, 30);
+        }
         if (scrollCommunityToLatest || communityScroll.getVvalue() > .92) {
             Platform.runLater(() -> communityScroll.setVvalue(1.0));
         }
@@ -1763,6 +2673,7 @@ public final class ShellController {
         metadata.getStyleClass().add("message-meta");
         bubble.getChildren().add(metadata);
         row.getChildren().add(bubble);
+        installLiveHoverLines(row);
         return row;
     }
 
@@ -1880,6 +2791,166 @@ public final class ShellController {
         });
     }
 
+    @FXML
+    private void chooseProfileGalleryMedia() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Add photos or GIFs to your gallery");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Photos and animated GIFs",
+                "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.bmp", "*.avif"));
+        List<File> files = chooser.showOpenMultipleDialog(profileGalleryGrid.getScene().getWindow());
+        if (files == null || files.isEmpty()) {
+            return;
+        }
+        List<Path> paths = new ArrayList<>();
+        for (File file : files) {
+            paths.add(file.toPath());
+        }
+        profilePhotoStatus.setText("Adding " + paths.size() + (paths.size() == 1 ? " gallery item…" : " gallery items…"));
+        uploadProfileGalleryMedia(paths, 0, 0);
+    }
+
+    /** Upload one item at a time so the 24-item limit remains exact even with multi-select. */
+    private void uploadProfileGalleryMedia(List<Path> files, int next, int uploaded) {
+        if (next >= files.size()) {
+            refreshProfileGallery();
+            profilePhotoStatus.setText(uploaded == 1 ? "Gallery item added." : uploaded + " gallery items added.");
+            return;
+        }
+        Path file = files.get(next);
+        context.api().uploadFile("profile/gallery", Map.of(), file, mediaType(file)).whenComplete((ignored, error) ->
+                Platform.runLater(() -> {
+                    if (error != null) {
+                        refreshProfileGallery();
+                        profilePhotoStatus.setText(uploaded == 0
+                                ? "Could not add " + file.getFileName() + ": " + message(error)
+                                : uploaded + " item(s) added. " + file.getFileName() + " was skipped: " + message(error));
+                        return;
+                    }
+                    uploadProfileGalleryMedia(files, next + 1, uploaded + 1);
+                }));
+    }
+
+    private void refreshProfileGallery() {
+        if (profileGalleryGrid == null) {
+            return;
+        }
+        context.api().getJson("profile/gallery").whenComplete((items, error) -> Platform.runLater(() -> {
+            if (error != null) {
+                profilePhotoStatus.setText("Could not load gallery: " + message(error));
+                return;
+            }
+            profileGalleryGrid.getChildren().clear();
+            int count = 0;
+            for (JsonNode item : items) {
+                profileGalleryGrid.getChildren().add(profileGalleryTile(item));
+                count++;
+            }
+            animateStaggeredReveal(profileGalleryGrid.getChildren(), 12, 32);
+            profileGalleryCount.setText(count + (count == 1 ? " memory" : " memories"));
+            profileGalleryEmpty.setVisible(count == 0);
+            profileGalleryEmpty.setManaged(count == 0);
+        }));
+    }
+
+    /** JavaFX keeps GIF frames alive on ImageView, so animated GIFs play automatically in this tile. */
+    private StackPane profileGalleryTile(JsonNode item) {
+        String id = item.path("id").asText();
+        String name = text(item, "originalName", "Profile photo");
+        boolean gif = text(item, "contentType", "").equalsIgnoreCase("image/gif")
+                || name.toLowerCase().endsWith(".gif");
+        StackPane tile = new StackPane();
+        tile.setPrefSize(162, 162);
+        tile.setMinSize(162, 162);
+        tile.setMaxSize(162, 162);
+        tile.getStyleClass().add("profile-gallery-tile");
+
+        Label fallback = new Label(gif ? "GIF" : "Photo");
+        fallback.getStyleClass().add("profile-gallery-loading");
+        ImageView image = new ImageView();
+        image.setFitWidth(162);
+        image.setFitHeight(162);
+        image.setPreserveRatio(false);
+        image.setSmooth(true);
+        Rectangle clip = new Rectangle(162, 162);
+        clip.setArcWidth(26);
+        clip.setArcHeight(26);
+        image.setClip(clip);
+        tile.getChildren().addAll(fallback, image);
+
+        Label filename = new Label(name);
+        filename.setMaxWidth(128);
+        filename.getStyleClass().add("profile-gallery-filename");
+        filename.setMouseTransparent(true);
+        StackPane.setAlignment(filename, Pos.BOTTOM_LEFT);
+        tile.getChildren().add(filename);
+        if (gif) {
+            Label badge = new Label("GIF");
+            badge.getStyleClass().add("profile-gallery-gif");
+            badge.setMouseTransparent(true);
+            StackPane.setAlignment(badge, Pos.TOP_LEFT);
+            tile.getChildren().add(badge);
+        }
+
+        Button remove = new Button("×");
+        remove.getStyleClass().add("profile-gallery-delete");
+        remove.setOnAction(event -> requestDeleteProfileGalleryMedia(id, name));
+        StackPane.setAlignment(remove, Pos.TOP_RIGHT);
+        tile.getChildren().add(remove);
+
+        context.api().getBytes("profile/gallery/" + id).thenApplyAsync(bytes ->
+                new Image(new ByteArrayInputStream(bytes), 324, 324, false, false), context.executor())
+                .whenComplete((loaded, error) -> {
+                    if (error == null && loaded != null && !loaded.isError()) {
+                        Platform.runLater(() -> {
+                            image.setImage(loaded);
+                            fallback.setVisible(false);
+                        });
+                    }
+                });
+        installLiveHoverLines(tile);
+        return tile;
+    }
+
+    private void requestDeleteProfileGalleryMedia(String id, String name) {
+        ButtonType remove = new ButtonType("Remove", ButtonBar.ButtonData.OK_DONE);
+        Alert prompt = new Alert(Alert.AlertType.CONFIRMATION,
+                "Remove “" + name + "” from your profile gallery?", ButtonType.CANCEL, remove);
+        preparePopup(prompt);
+        prompt.setTitle("Remove gallery item");
+        prompt.setHeaderText(null);
+        prompt.showAndWait().filter(choice -> choice == remove).ifPresent(choice ->
+                context.api().delete("profile/gallery/" + id).whenComplete((ignored, error) -> Platform.runLater(() -> {
+                    if (error != null) {
+                        profilePhotoStatus.setText("Could not remove gallery item: " + message(error));
+                        return;
+                    }
+                    profilePhotoStatus.setText("Gallery item removed.");
+                    refreshProfileGallery();
+                })));
+    }
+
+    @FXML
+    private void chooseLoginVisual() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Choose sign-in page image");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Image files", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.bmp", "*.avif"));
+        File file = chooser.showOpenDialog(loginVisualButton.getScene().getWindow());
+        if (file == null) {
+            return;
+        }
+        loginVisualButton.setDisable(true);
+        profilePhotoStatus.setText("Uploading sign-in image…");
+        context.api().uploadFile("admin/login-visual", Map.of(), file.toPath(), mediaType(file.toPath()))
+                .whenComplete((uploaded, error) -> Platform.runLater(() -> {
+                    loginVisualButton.setDisable(false);
+                    if (error != null) {
+                        profilePhotoStatus.setText("Could not update sign-in image: " + message(error));
+                        return;
+                    }
+                    profilePhotoStatus.setText("Sign-in image updated. Sign out to preview the new image.");
+                }));
+    }
+
     private void applyCurrentNickname(String nickname) {
         AuthResponse current = context.session().current();
         AuthResponse.UserSummary user = current.user();
@@ -1894,13 +2965,345 @@ public final class ShellController {
     private void refreshApprovals() {
         refreshApprovalSummary();
         loadApprovals("users", userApprovalList, pendingUsers, item -> item.path("studentId").asText() + " — " + item.path("legalName").asText());
-        loadApprovals("posts", postApprovalList, pendingPosts, item -> item.path("authorNickname").asText() + "\n" + item.path("body").asText());
-        loadApprovals("papers", paperApprovalList, pendingPapers, item -> item.path("courseCode").asText() + " — " + item.path("title").asText());
+        loadApprovals("password-resets", passwordResetApprovalList, pendingPasswordResets,
+                item -> item.path("nickname").asText("Campus member") + " · " + item.path("loginId").asText() + "\nPassword-reset request");
+        loadPendingPostApprovals();
+        loadPendingPaperApprovals();
+    }
+
+    private void loadPendingPostApprovals() {
+        runApproval(context.api().getJson("admin/approvals/posts"), json -> {
+            String selected = postApprovalList.getSelectionModel().getSelectedItem();
+            postApprovalList.getItems().clear();
+            pendingPosts.clear();
+            pendingPostRequests.clear();
+            for (JsonNode post : json) {
+                int attachmentCount = post.path("attachments").isArray() ? post.path("attachments").size() : 0;
+                String summary = post.path("authorNickname").asText("Campus member") + "\n"
+                        + post.path("body").asText("(media-only post)");
+                if (attachmentCount > 0) {
+                    summary += "\n📎 " + attachmentCount + (attachmentCount == 1 ? " attachment — review required" : " attachments — review required");
+                }
+                String uniqueSummary = summary;
+                int duplicate = 2;
+                while (pendingPosts.containsKey(uniqueSummary)) {
+                    uniqueSummary = summary + " (request " + duplicate++ + ")";
+                }
+                String id = post.path("id").asText();
+                postApprovalList.getItems().add(uniqueSummary);
+                pendingPosts.put(uniqueSummary, id);
+                pendingPostRequests.put(id, post);
+            }
+            if (selected != null && pendingPosts.containsKey(selected)) {
+                postApprovalList.getSelectionModel().select(selected);
+            }
+        });
+    }
+
+    private void loadPendingPaperApprovals() {
+        runApproval(context.api().getJson("admin/approvals/papers"), json -> {
+            String selected = paperApprovalList.getSelectionModel().getSelectedItem();
+            paperApprovalList.getItems().clear();
+            pendingPapers.clear();
+            pendingPaperRequests.clear();
+            for (JsonNode paper : json) {
+                String summary = paper.path("courseCode").asText("Course") + " — " + paper.path("title").asText("Untitled paper")
+                        + "\nPDF: " + paper.path("filename").asText("question.pdf") + " · review required";
+                String uniqueSummary = summary;
+                int duplicate = 2;
+                while (pendingPapers.containsKey(uniqueSummary)) {
+                    uniqueSummary = summary + " (request " + duplicate++ + ")";
+                }
+                String id = paper.path("id").asText();
+                paperApprovalList.getItems().add(uniqueSummary);
+                pendingPapers.put(uniqueSummary, id);
+                pendingPaperRequests.put(id, paper);
+            }
+            if (selected != null && pendingPapers.containsKey(selected)) {
+                paperApprovalList.getSelectionModel().select(selected);
+            }
+        });
+    }
+
+    @FXML
+    private void reviewPaperAttachment() {
+        String paperId = selected(pendingPapers, paperApprovalList);
+        if (paperId == null) {
+            approvalSummary.setText("Select a pending question PDF first.");
+            return;
+        }
+        JsonNode paper = pendingPaperRequests.get(paperId);
+        if (paper == null) {
+            approvalSummary.setText("That question PDF is no longer awaiting review.");
+            refreshApprovals();
+            return;
+        }
+
+        Dialog<Void> dialog = new Dialog<>();
+        preparePopup(dialog);
+        dialog.setTitle("Review question PDF");
+        dialog.setResizable(true);
+        DialogPane pane = dialog.getDialogPane();
+        pane.getStyleClass().addAll("post-dialog", "approval-review-dialog", "approval-pdf-dialog");
+        pane.setHeaderText(null);
+        pane.setPrefWidth(940);
+        pane.setPrefHeight(740);
+
+        HBox titlebar = new HBox(10);
+        titlebar.setAlignment(Pos.CENTER_LEFT);
+        titlebar.getStyleClass().add("dialog-titlebar");
+        Label title = new Label("Review question PDF");
+        title.getStyleClass().add("dialog-title");
+        Region titleSpacer = new Region();
+        HBox.setHgrow(titleSpacer, Priority.ALWAYS);
+        Button close = new Button("×");
+        close.getStyleClass().add("dialog-close");
+        close.setOnAction(event -> dismissPopup(dialog));
+        titlebar.getChildren().addAll(title, titleSpacer, close);
+
+        Label paperTitleLabel = new Label("Repository title (editable before approval)");
+        paperTitleLabel.getStyleClass().add("field-label");
+        TextField paperTitleInput = new TextField(paper.path("title").asText("Question paper"));
+        paperTitleInput.setPromptText("Enter the approved repository title");
+        paperTitleInput.setMaxWidth(Double.MAX_VALUE);
+        Label metadata = new Label(paper.path("courseCode").asText("Course") + "  ·  Exam " + paper.path("examYear").asText()
+                + "  ·  " + paper.path("filename").asText("question.pdf"));
+        metadata.getStyleClass().add("post-meta");
+
+        VBox pages = new VBox(14);
+        pages.getStyleClass().add("approval-pdf-pages");
+        ScrollPane pdfScroll = new ScrollPane(pages);
+        pdfScroll.setFitToWidth(false);
+        pdfScroll.getStyleClass().add("approval-pdf-scroll");
+        Label previewStatus = new Label("Loading PDF preview…");
+        previewStatus.getStyleClass().add("notice-pdf-status");
+        double[] zoom = {1.0};
+        Label zoomLabel = new Label("100%");
+        zoomLabel.getStyleClass().add("notice-zoom-label");
+        Runnable render = () -> {
+            previewStatus.setText("Loading PDF preview…");
+            context.api().getBytes("question-papers/" + paperId + "/download")
+                    .thenApplyAsync(bytes -> renderPdfPages(bytes, zoom[0]), context.executor())
+                    .whenComplete((rendered, error) -> Platform.runLater(() -> {
+                        if (error != null) {
+                            previewStatus.setText("PDF preview unavailable: " + message(error));
+                            return;
+                        }
+                        pages.getChildren().clear();
+                        for (Image page : rendered) {
+                            ImageView view = new ImageView(page);
+                            view.setPreserveRatio(true);
+                            view.setFitWidth(620 * zoom[0]);
+                            view.getStyleClass().add("notice-pdf-page");
+                            pages.getChildren().add(view);
+                        }
+                        zoomLabel.setText(Math.round(zoom[0] * 100) + "%");
+                        previewStatus.setText(rendered.size() + (rendered.size() == 1 ? " page · PDF preview" : " pages · PDF preview"));
+                    }));
+        };
+        Button zoomOut = new Button("−");
+        zoomOut.getStyleClass().add("notice-tool-button");
+        zoomOut.setOnAction(event -> { zoom[0] = Math.max(.6, zoom[0] - .2); render.run(); });
+        Button zoomIn = new Button("+");
+        zoomIn.getStyleClass().add("notice-tool-button");
+        zoomIn.setOnAction(event -> { zoom[0] = Math.min(2.4, zoom[0] + .2); render.run(); });
+        Button download = new Button("Download PDF");
+        download.getStyleClass().add("secondary-button");
+        download.setOnAction(event -> downloadRemoteAttachment("question-papers/" + paperId + "/download",
+                paper.path("filename").asText("question.pdf"), previewStatus::setText, dialog.getDialogPane().getScene().getWindow()));
+        HBox previewTools = new HBox(7, new Label("Zoom"), zoomOut, zoomLabel, zoomIn, new Region(), download);
+        previewTools.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(previewTools.getChildren().get(5), Priority.ALWAYS);
+
+        Button decline = new Button("Decline PDF");
+        decline.getStyleClass().add("danger-button");
+        Button approve = new Button("Approve PDF");
+        approve.getStyleClass().add("secondary-button");
+        Label decisionStatus = new Label();
+        decisionStatus.getStyleClass().add("composer-error");
+        Region decisionSpacer = new Region();
+        HBox.setHgrow(decisionSpacer, Priority.ALWAYS);
+        HBox decisions = new HBox(8, decisionStatus, decisionSpacer, decline, approve);
+        decisions.setAlignment(Pos.CENTER_LEFT);
+        decisions.getStyleClass().add("approval-review-actions");
+        approve.setOnAction(event -> decideReviewedPaper(paperId, "APPROVE", paperTitleInput, dialog, approve, decline, decisionStatus));
+        decline.setOnAction(event -> decideReviewedPaper(paperId, "REJECT", paperTitleInput, dialog, approve, decline, decisionStatus));
+
+        VBox heading = new VBox(8, titlebar, paperTitleLabel, paperTitleInput, metadata, previewTools);
+        BorderPane content = new BorderPane();
+        content.setTop(heading);
+        content.setCenter(pdfScroll);
+        content.setBottom(new VBox(previewStatus, decisions));
+        pane.setContent(content);
+        dialog.show();
+        render.run();
+    }
+
+    private void decideReviewedPaper(String id, String action, TextField titleInput, Dialog<?> dialog, Button approve, Button decline, Label status) {
+        String approvedTitle = titleInput.getText().trim();
+        if ("APPROVE".equals(action) && approvedTitle.isBlank()) {
+            status.setText("Enter a suitable repository title before approving this PDF.");
+            titleInput.requestFocus();
+            return;
+        }
+        approve.setDisable(true);
+        decline.setDisable(true);
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("action", action);
+        request.put("reason", decisionReason.getText().isBlank() ? null : decisionReason.getText());
+        request.put("title", "APPROVE".equals(action) ? approvedTitle : null);
+        context.api().putJson("admin/approvals/papers/" + id, request).whenComplete((ignored, error) -> Platform.runLater(() -> {
+            if (error != null) {
+                approve.setDisable(false);
+                decline.setDisable(false);
+                status.setText("Could not update question PDF: " + message(error));
+                return;
+            }
+            decisionReason.clear();
+            dismissPopup(dialog);
+            refreshApprovals();
+            refreshPapers();
+        }));
+    }
+
+    @FXML
+    private void reviewPostAttachments() {
+        String postId = selected(pendingPosts, postApprovalList);
+        if (postId == null) {
+            approvalSummary.setText("Select a pending post first.");
+            return;
+        }
+        JsonNode post = pendingPostRequests.get(postId);
+        JsonNode attachments = post == null ? null : post.path("attachments");
+        if (attachments == null || !attachments.isArray() || attachments.isEmpty()) {
+            Alert message = new Alert(Alert.AlertType.INFORMATION, "This post does not contain any photos or videos.", ButtonType.OK);
+            preparePopup(message);
+            message.setTitle("No attachments");
+            message.setHeaderText(null);
+            message.show();
+            return;
+        }
+
+        Dialog<Void> dialog = new Dialog<>();
+        preparePopup(dialog);
+        dialog.setTitle("Review post attachments");
+        dialog.setResizable(true);
+        DialogPane pane = dialog.getDialogPane();
+        pane.getStyleClass().addAll("post-dialog", "approval-review-dialog");
+        pane.setHeaderText(null);
+        pane.setPrefWidth(920);
+        pane.setPrefHeight(720);
+
+        HBox titlebar = new HBox(10);
+        titlebar.setAlignment(Pos.CENTER_LEFT);
+        titlebar.getStyleClass().add("dialog-titlebar");
+        Label title = new Label("Review post attachments");
+        title.getStyleClass().add("dialog-title");
+        Region titleSpacer = new Region();
+        HBox.setHgrow(titleSpacer, Priority.ALWAYS);
+        Button close = new Button("×");
+        close.getStyleClass().add("dialog-close");
+        close.setOnAction(event -> dismissPopup(dialog));
+        titlebar.getChildren().addAll(title, titleSpacer, close);
+
+        Label author = new Label(post.path("authorNickname").asText("Campus member"));
+        author.getStyleClass().add("post-author");
+        Label identity = new Label("ID: " + post.path("authorStudentId").asText("Campus member")
+                + "  ·  " + attachmentCountText(attachments.size()));
+        identity.getStyleClass().add("post-meta");
+        VBox postIdentity = new VBox(3, author, identity);
+
+        String postBody = post.path("body").asText("");
+        Label caption = new Label(postBody.isBlank() ? "(Media-only post)" : postBody);
+        caption.setWrapText(true);
+        caption.getStyleClass().add("post-body");
+
+        VBox mediaItems = new VBox(14);
+        mediaItems.getStyleClass().add("approval-media-review");
+        for (JsonNode attachment : attachments) {
+            String mediaPath = "admin/approvals/posts/" + postId + "/media/" + attachment.path("id").asText();
+            if (isImageAttachment(attachment)) {
+                mediaItems.getChildren().add(imageAttachment(mediaPath));
+            } else {
+                mediaItems.getChildren().add(approvalVideoAttachment(attachment, mediaPath, dialog));
+            }
+        }
+        ScrollPane mediaScroll = new ScrollPane(mediaItems);
+        mediaScroll.setFitToWidth(true);
+        mediaScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        mediaScroll.getStyleClass().add("approval-media-scroll");
+
+        Button decline = new Button("Decline post");
+        decline.getStyleClass().add("danger-button");
+        Button approve = new Button("Approve post");
+        approve.getStyleClass().add("secondary-button");
+        Label decisionStatus = new Label();
+        decisionStatus.getStyleClass().add("composer-error");
+        Region decisionSpacer = new Region();
+        HBox.setHgrow(decisionSpacer, Priority.ALWAYS);
+        HBox decisions = new HBox(8, decisionStatus, decisionSpacer, decline, approve);
+        decisions.setAlignment(Pos.CENTER_LEFT);
+        decisions.getStyleClass().add("approval-review-actions");
+        approve.setOnAction(event -> decideReviewedPost(postId, "APPROVE", dialog, approve, decline, decisionStatus));
+        decline.setOnAction(event -> decideReviewedPost(postId, "REJECT", dialog, approve, decline, decisionStatus));
+
+        BorderPane content = new BorderPane();
+        content.setTop(new VBox(10, titlebar, postIdentity, caption));
+        content.setCenter(mediaScroll);
+        content.setBottom(decisions);
+        pane.setContent(content);
+        dialog.show();
+    }
+
+    private String attachmentCountText(int count) {
+        return count + (count == 1 ? " attachment to review" : " attachments to review");
+    }
+
+    private VBox approvalVideoAttachment(JsonNode attachment, String mediaPath, Dialog<?> dialog) {
+        VBox video = new VBox(6);
+        video.getStyleClass().addAll("video-attachment", "approval-video-attachment");
+        Label label = new Label(isVideoAttachment(attachment) ? "▶ Video attachment" : "⇩ Media attachment");
+        label.getStyleClass().add("video-title");
+        Label filename = new Label(text(attachment, "originalName", "Media"));
+        filename.setWrapText(true);
+        filename.getStyleClass().add("post-meta");
+        HBox controls = new HBox(8);
+        Button play = new Button(isVideoAttachment(attachment) ? "Play video" : "Open media");
+        play.getStyleClass().add("media-play-button");
+        play.setOnAction(event -> openRemoteMedia(mediaPath, text(attachment, "originalName", "media"), approvalSummary::setText));
+        Button download = new Button("Download");
+        download.getStyleClass().add("media-download-button");
+        download.setOnAction(event -> downloadRemoteAttachment(mediaPath, text(attachment, "originalName", "media"),
+                approvalSummary::setText, dialog.getDialogPane().getScene().getWindow()));
+        controls.getChildren().addAll(play, download);
+        video.getChildren().addAll(label, filename, controls);
+        return video;
+    }
+
+    private void decideReviewedPost(String id, String action, Dialog<?> dialog, Button approve, Button decline, Label status) {
+        approve.setDisable(true);
+        decline.setDisable(true);
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("action", action);
+        request.put("reason", decisionReason.getText().isBlank() ? null : decisionReason.getText());
+        context.api().putJson("admin/approvals/posts/" + id, request).whenComplete((ignored, error) -> Platform.runLater(() -> {
+            if (error != null) {
+                approve.setDisable(false);
+                decline.setDisable(false);
+                status.setText("Could not update post: " + message(error));
+                return;
+            }
+            decisionReason.clear();
+            dismissPopup(dialog);
+            refreshApprovals();
+            refreshFeed();
+        }));
     }
 
     private void refreshApprovalSummary() {
         runApproval(context.api().getJson("admin/approvals/summary"), summary -> approvalSummary.setText(summary.path("users").asInt()
-                + " students · " + summary.path("posts").asInt() + " posts · " + summary.path("papers").asInt() + " PDFs awaiting review"));
+                + " students · " + summary.path("passwordResets").asInt() + " password resets · "
+                + summary.path("posts").asInt() + " posts · " + summary.path("papers").asInt() + " PDFs awaiting review"));
     }
 
     private void loadApprovals(String kind, ListView<String> list, Map<String, String> ids, java.util.function.Function<JsonNode, String> format) {
@@ -1917,10 +3320,25 @@ public final class ShellController {
 
     @FXML private void approveUser() { decide("users", pendingUsers, userApprovalList, "APPROVE"); }
     @FXML private void rejectUser() { decide("users", pendingUsers, userApprovalList, "REJECT"); }
-    @FXML private void approvePost() { decide("posts", pendingPosts, postApprovalList, "APPROVE"); }
-    @FXML private void rejectPost() { decide("posts", pendingPosts, postApprovalList, "REJECT"); }
-    @FXML private void approvePaper() { decide("papers", pendingPapers, paperApprovalList, "APPROVE"); }
-    @FXML private void rejectPaper() { decide("papers", pendingPapers, paperApprovalList, "REJECT"); }
+    @FXML private void approvePasswordReset() { decide("password-resets", pendingPasswordResets, passwordResetApprovalList, "APPROVE"); }
+    @FXML private void rejectPasswordReset() { decide("password-resets", pendingPasswordResets, passwordResetApprovalList, "REJECT"); }
+    @FXML private void approvePost() { decidePostOrOpenReview("APPROVE"); }
+    @FXML private void rejectPost() { decidePostOrOpenReview("REJECT"); }
+    // Each pending question-paper request is a PDF, so its decision always goes through the review window.
+    @FXML private void approvePaper() { reviewPaperAttachment(); }
+    @FXML private void rejectPaper() { reviewPaperAttachment(); }
+
+    /** An attached student post must be opened in the reviewer before it can be decided. */
+    private void decidePostOrOpenReview(String action) {
+        String id = selected(pendingPosts, postApprovalList);
+        JsonNode post = id == null ? null : pendingPostRequests.get(id);
+        JsonNode attachments = post == null ? null : post.path("attachments");
+        if (attachments != null && attachments.isArray() && !attachments.isEmpty()) {
+            reviewPostAttachments();
+            return;
+        }
+        decide("posts", pendingPosts, postApprovalList, action);
+    }
 
     private void decide(String kind, Map<String, String> ids, ListView<String> list, String action) {
         String id = selected(ids, list);
@@ -1950,6 +3368,9 @@ public final class ShellController {
         }
         if (chatPolling != null) {
             chatPolling.stop();
+        }
+        if (catRoamingAnimation != null) {
+            catRoamingAnimation.stop();
         }
         try {
             if (realtimeSubscription != null) {

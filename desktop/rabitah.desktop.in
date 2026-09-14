@@ -1,0 +1,16 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Rabitah
+Comment=A centralized social and academic platform for university students
+Exec=@PROJECT_DIR@/run-linux.sh
+Icon=@ICON_PATH@
+Terminal=false
+Categories=Education;
+StartupNotify=true
+StartupWMClass=com.rabitah.frontend.RabitahApplication
+Actions=NewWindow;
+
+[Desktop Action NewWindow]
+Name=Open another Rabitah window
+Exec=@PROJECT_DIR@/run-linux.sh

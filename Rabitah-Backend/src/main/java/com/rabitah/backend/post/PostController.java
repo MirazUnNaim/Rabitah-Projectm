@@ -74,14 +74,40 @@ public class PostController {
     @PostMapping(value="/posts", consumes=org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     @Transactional
-    public PostView createWithMedia(@RequestParam(defaultValue="") String body,@RequestParam(required=false) String department,@RequestParam(required=false) String section,@RequestParam(required=false) Integer academicYear,@RequestPart MultipartFile file,Authentication auth) throws java.io.IOException {
+    public PostView createWithMedia(@RequestParam(defaultValue="") String body,
+                                    @RequestParam(required=false) String department,
+                                    @RequestParam(required=false) String section,
+                                    @RequestParam(required=false) Integer academicYear,
+                                    @RequestPart(value="files", required=false) List<MultipartFile> files,
+                                    // Kept for clients from before multi-attachment posts were introduced.
+                                    @RequestPart(value="file", required=false) MultipartFile legacyFile,
+                                    Authentication auth) throws java.io.IOException {
         User user=currentUsers.require(auth);
-        if(file.isEmpty())throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_MEDIA","Choose a media file to attach.");
-        if(file.getSize()>50_000_000)throw new ApiException(HttpStatus.BAD_REQUEST,"MEDIA_TOO_LARGE","Media must be 50 MB or smaller.");
-        UUID id=UUID.randomUUID();String status=user.getRole()==Role.SYSTEM_ADMIN?"APPROVED":"PENDING";String key=storage.save("posts/"+id,file);
-        jdbc.update("insert into posts(id,author_id,body,visibility,status,department_code,section_code,academic_year,created_at,updated_at) values(?,?,?,?,?,?,?,?,now(),now())",id,user.getId(),body.trim(),"SCOPED",status,empty(department),empty(section),academicYear);
-        jdbc.update("insert into post_media(post_id,storage_key,original_name,content_type,size_bytes) values(?,?,?,?,?)",id,key,file.getOriginalFilename(),file.getContentType(),file.getSize());
-        if("PENDING".equals(status))events.approvalsChanged();return get(id,auth);
+        String message=body==null?"":body.trim();
+        if(message.length()>2000)throw new ApiException(HttpStatus.BAD_REQUEST,"POST_TOO_LONG","A post can contain up to 2,000 characters.");
+
+        List<MultipartFile> attachments=new ArrayList<>();
+        if(files!=null)attachments.addAll(files.stream().filter(file->file!=null&&!file.isEmpty()).toList());
+        if(legacyFile!=null&&!legacyFile.isEmpty())attachments.add(legacyFile);
+        if(attachments.isEmpty())throw new ApiException(HttpStatus.BAD_REQUEST,"INVALID_MEDIA","Choose at least one photo or video to attach.");
+        if(attachments.size()>10)throw new ApiException(HttpStatus.BAD_REQUEST,"TOO_MANY_MEDIA","A post can include up to 10 photos or videos.");
+
+        long totalSize=0;
+        for(MultipartFile file:attachments){
+            if(file.getSize()>100_000_000)throw new ApiException(HttpStatus.BAD_REQUEST,"MEDIA_TOO_LARGE","Each photo or video must be 100 MB or smaller.");
+            totalSize+=file.getSize();
+        }
+        if(totalSize>500_000_000)throw new ApiException(HttpStatus.BAD_REQUEST,"POST_MEDIA_TOO_LARGE","The combined media in one post must be 500 MB or smaller.");
+
+        UUID id=UUID.randomUUID();
+        String status=user.getRole()==Role.SYSTEM_ADMIN?"APPROVED":"PENDING";
+        jdbc.update("insert into posts(id,author_id,body,visibility,status,department_code,section_code,academic_year,created_at,updated_at) values(?,?,?,?,?,?,?,?,now(),now())",id,user.getId(),message,"SCOPED",status,empty(department),empty(section),academicYear);
+        for(MultipartFile file:attachments){
+            String key=storage.save("posts/"+id,file);
+            jdbc.update("insert into post_media(post_id,storage_key,original_name,content_type,size_bytes) values(?,?,?,?,?)",id,key,safeFilename(file.getOriginalFilename()),mediaContentType(file),file.getSize());
+        }
+        if("PENDING".equals(status))events.approvalsChanged();
+        return get(id,auth);
     }
 
     @GetMapping("/posts/{id}")
@@ -177,6 +203,8 @@ public class PostController {
     }
     private UUID commentPostId(UUID id){List<UUID> rows=jdbc.query("select post_id from comments where id=? and deleted_at is null",(rs,n)->rs.getObject(1,UUID.class),id);if(rows.isEmpty())throw new ApiException(HttpStatus.NOT_FOUND,"COMMENT_NOT_FOUND","Comment not found");return rows.getFirst();}
     private String empty(String s){return s==null||s.isBlank()?null:s;}
+    private String safeFilename(String filename){return filename==null||filename.isBlank()?"media":filename.replaceAll("[\\\\/:*?\"<>|\\r\\n]","_");}
+    private String mediaContentType(MultipartFile file){String value=file.getContentType();return value==null||value.isBlank()?MediaType.APPLICATION_OCTET_STREAM_VALUE:value;}
     private MediaType contentType(String value){if(value==null||value.isBlank())return MediaType.APPLICATION_OCTET_STREAM;try{return MediaType.parseMediaType(value);}catch(IllegalArgumentException ignored){return MediaType.APPLICATION_OCTET_STREAM;}}
     public record CreatePost(@NotBlank @Size(max=2000) String body,String department,String section,Integer academicYear){}
     public record Reaction(@Pattern(regexp="LIKE|DISLIKE") String type){}

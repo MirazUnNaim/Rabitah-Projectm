@@ -1,21 +1,51 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?import javafx.scene.control.*?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
 <?import javafx.scene.layout.*?>
 <StackPane xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.rabitah.frontend.controller.LoginController"
-           styleClass="page">
-    <VBox maxWidth="440" spacing="16" styleClass="login-panel">
-        <Label text="Rabitah" styleClass="brand"/>
-        <Label text="Your campus, beautifully connected." styleClass="section-title"/>
-        <Label text="Students: your first sign-in submits an access request to the system administrator. Use your roster student ID and choose a password of at least 8 characters." wrapText="true" styleClass="muted"/>
-        <TextField fx:id="loginId" promptText="Student or system ID" editable="true"/>
-        <StackPane>
-            <PasswordField fx:id="password" promptText="Password" editable="true" onAction="#login"/>
-            <TextField fx:id="visiblePassword" promptText="Password" editable="true" visible="false"
-                       managed="false" onAction="#login"/>
+           styleClass="login-page">
+    <HBox maxWidth="1180" maxHeight="650" styleClass="login-shell">
+        <VBox spacing="16" HBox.hgrow="ALWAYS" styleClass="login-welcome-pane">
+            <HBox alignment="CENTER_LEFT" spacing="9">
+                <ImageView fitWidth="36" fitHeight="36" preserveRatio="true" smooth="true" styleClass="login-logo">
+                    <image><Image url="@../images/rabitah-app-icon-v1.png"/></image>
+                </ImageView>
+                <Label text="Rabitah" styleClass="login-brand"/>
+            </HBox>
+            <Region VBox.vgrow="ALWAYS"/>
+            <VBox spacing="8" styleClass="login-copy">
+                <Label text="WELCOME BACK" styleClass="login-heading"/>
+                <Label text="Please fill up your login credentials." styleClass="login-subheading"/>
+            </VBox>
+            <VBox spacing="8" styleClass="login-form">
+                <Label text="Campus ID" styleClass="login-field-label"/>
+                <TextField fx:id="loginId" promptText="Enter your student or system ID" editable="true" styleClass="login-input"/>
+                <Label text="Password" styleClass="login-field-label"/>
+                <StackPane>
+                    <PasswordField fx:id="password" promptText="Enter your password" editable="true" onAction="#login" styleClass="login-input"/>
+                    <TextField fx:id="visiblePassword" promptText="Enter your password" editable="true" visible="false"
+                               managed="false" onAction="#login" styleClass="login-input"/>
+                </StackPane>
+                <HBox alignment="CENTER_LEFT" spacing="8" styleClass="login-options">
+                    <CheckBox fx:id="showPassword" text="Show password" onAction="#togglePasswordVisibility"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Button text="Forgot password?" onAction="#openForgotPassword" styleClass="forgot-password-button"/>
+                </HBox>
+                <Label fx:id="errorLabel" wrapText="true" styleClass="error login-error"/>
+                <Button fx:id="loginButton" text="Sign in" defaultButton="true" maxWidth="Infinity" onAction="#login" styleClass="login-submit-button"/>
+            </VBox>
+            <Label text="New students: first sign-in submits an access request to SysAdmin." wrapText="true" styleClass="login-help"/>
+            <Region VBox.vgrow="ALWAYS"/>
+        </VBox>
+        <StackPane fx:id="loginVisualStage" HBox.hgrow="ALWAYS" styleClass="login-visual-pane">
+            <VBox alignment="CENTER" spacing="12" styleClass="login-visual-placeholder">
+                <Label text="R" styleClass="login-visual-monogram"/>
+                <Label text="Your campus. Your community." styleClass="login-visual-title"/>
+                <Label text="This space is curated by your system administrator." wrapText="true" styleClass="login-visual-copy"/>
+            </VBox>
+            <ImageView fx:id="loginVisual" preserveRatio="false" smooth="true" visible="false" managed="false" styleClass="login-visual-image"/>
         </StackPane>
-        <CheckBox fx:id="showPassword" text="Show password" onAction="#togglePasswordVisibility"/>
-        <Label fx:id="errorLabel" wrapText="true" styleClass="error"/>
-        <Button fx:id="loginButton" text="Sign in to Rabitah" defaultButton="true" maxWidth="Infinity" onAction="#login"/>
-    </VBox>
+    </HBox>
 </StackPane>

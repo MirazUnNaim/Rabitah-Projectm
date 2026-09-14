@@ -7,4 +7,4 @@ target/
 *.iml
 uploads/
 Rabitah-Frontend/downloads/
-
+generated/
