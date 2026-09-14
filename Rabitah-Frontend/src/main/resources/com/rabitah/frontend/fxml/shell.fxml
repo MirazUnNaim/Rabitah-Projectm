@@ -22,7 +22,7 @@
       <top>
        <VBox spacing="7" styleClass="social-feed-top">
         <HBox spacing="10" styleClass="compact-composer">
-         <Label fx:id="feedAvatar" styleClass="feed-avatar"/>
+         <StackPane><Label fx:id="feedAvatar" styleClass="feed-avatar"/><ImageView fx:id="feedAvatarPhoto" fitWidth="38" fitHeight="38" preserveRatio="true"/></StackPane>
          <Button fx:id="openPostComposer" text="What's on your mind?" onAction="#openPostComposer" HBox.hgrow="ALWAYS" styleClass="composer-prompt"/>
          <Button text="Photo / video" onAction="#openPostComposerWithMedia" styleClass="composer-media-button"/>
         </HBox>
@@ -70,40 +70,118 @@
       <center><ListView fx:id="paperList"/></center>
      </BorderPane>
     </Tab>
-    <Tab text="Private Chat">
-     <BorderPane>
+    <Tab fx:id="privateChatTab" text="Private Chat">
+     <BorderPane styleClass="messenger-shell">
       <left>
-       <VBox prefWidth="305" spacing="10" styleClass="chat-sidebar">
-        <Label text="Chats" styleClass="section-title"/>
-        <TextField fx:id="chatSearch" promptText="Search Messenger" onKeyReleased="#searchChatUsers"/>
-        <Label text="People" styleClass="field-label"/>
-        <ListView fx:id="chatUserList" prefHeight="150" VBox.vgrow="NEVER"/>
-        <Label text="Recent conversations" styleClass="field-label"/>
-        <ListView fx:id="conversationList" VBox.vgrow="ALWAYS"/>
+       <VBox prefWidth="286" spacing="12" styleClass="chat-people-panel">
+        <HBox alignment="CENTER_LEFT">
+         <Label text="Chats" styleClass="chat-panel-title"/>
+         <Region HBox.hgrow="ALWAYS"/>
+         <Label fx:id="chatPeopleCount" text="" styleClass="chat-people-count"/>
+        </HBox>
+        <TextField fx:id="chatSearch" promptText="Search people" onKeyReleased="#searchChatUsers" styleClass="chat-search"/>
+        <HBox alignment="CENTER_LEFT">
+         <Label text="People" styleClass="chat-section-label"/>
+         <Region HBox.hgrow="ALWAYS"/>
+         <Label text="All campus members" styleClass="chat-section-hint"/>
+        </HBox>
+        <ListView fx:id="chatUserList" VBox.vgrow="ALWAYS" styleClass="chat-people-list"/>
        </VBox>
       </left>
       <center>
-       <BorderPane>
-        <top><HBox spacing="10" styleClass="chat-header"><Label fx:id="chatWith" text="Select someone to start chatting" styleClass="section-title"/><Region HBox.hgrow="ALWAYS"/><Label fx:id="chatStatus" text="" styleClass="muted"/></HBox></top>
-        <center><ListView fx:id="messageList"/></center>
-        <bottom><VBox spacing="5" styleClass="message-input"><Label fx:id="chatAttachmentStatus" styleClass="muted"/><HBox spacing="8"><Button text="＋" onAction="#chooseChatAttachment" styleClass="secondary-button"/><TextField fx:id="messageText" promptText="Write a message…" onAction="#sendMessage" HBox.hgrow="ALWAYS"/><Button text="Send" onAction="#sendMessage"/></HBox></VBox></bottom>
+       <BorderPane styleClass="chat-workspace">
+        <top>
+         <HBox spacing="11" alignment="CENTER_LEFT" styleClass="chat-contact-header">
+          <StackPane>
+           <Label fx:id="chatReceiverAvatar" text="?" styleClass="chat-header-avatar"/>
+           <ImageView fx:id="chatReceiverPhoto" fitWidth="42" fitHeight="42" preserveRatio="true"/>
+          </StackPane>
+          <VBox spacing="1">
+           <Label fx:id="chatWith" text="Select someone to start chatting" styleClass="chat-contact-name"/>
+           <Label fx:id="chatStatus" text="Choose a campus member to begin." styleClass="chat-contact-meta"/>
+          </VBox>
+          <Region HBox.hgrow="ALWAYS"/>
+          <Button text="↻" onAction="#refreshChat" styleClass="chat-refresh-button"><tooltip><Tooltip text="Refresh chat"/></tooltip></Button>
+         </HBox>
+        </top>
+        <center>
+         <StackPane styleClass="chat-thread-stage">
+          <ScrollPane fx:id="messageScroll" fitToWidth="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" styleClass="message-scroll">
+           <content><VBox fx:id="messageContainer" spacing="7" styleClass="message-container"/></content>
+          </ScrollPane>
+          <VBox fx:id="chatEmptyState" spacing="6" alignment="CENTER" mouseTransparent="true" styleClass="chat-empty-state">
+           <Label fx:id="chatEmptyTitle" text="Your conversations live here" styleClass="chat-empty-title"/>
+           <Label fx:id="chatEmptyCopy" text="Choose a person from the list to begin a private chat." wrapText="true" styleClass="chat-empty-copy"/>
+          </VBox>
+         </StackPane>
+        </center>
+        <bottom>
+         <VBox spacing="5" styleClass="chat-message-composer">
+          <Label fx:id="chatAttachmentStatus" styleClass="chat-attachment-status"/>
+          <HBox spacing="9" alignment="CENTER_LEFT" styleClass="chat-composer-row">
+           <Button fx:id="chatAttachButton" text="＋" onAction="#chooseChatAttachment" styleClass="chat-attach-button"><tooltip><Tooltip text="Attach photo, video, or file"/></tooltip></Button>
+           <TextField fx:id="messageText" promptText="Write a message…" onAction="#sendMessage" HBox.hgrow="ALWAYS" styleClass="chat-message-field"/>
+           <Button fx:id="chatSendButton" text="Send" onAction="#sendMessage" styleClass="chat-send-button"/>
+          </HBox>
+         </VBox>
+        </bottom>
        </BorderPane>
       </center>
-      <right><VBox prefWidth="205" spacing="12" styleClass="chat-sidebar"><Label text="Conversation details" styleClass="section-title"/><Label text="Select a chat to see shared media and actions." wrapText="true" styleClass="muted"/><Button text="View profile" styleClass="secondary-button"/><Button text="Search messages" styleClass="secondary-button"/><Separator/><Label text="Shared files" styleClass="field-label"/></VBox></right>
+      <right>
+       <VBox prefWidth="274" spacing="12" styleClass="chat-profile-panel">
+        <VBox spacing="5" alignment="CENTER" styleClass="chat-profile-summary">
+         <StackPane>
+          <Label fx:id="chatProfileAvatar" text="?" styleClass="chat-profile-avatar"/>
+          <ImageView fx:id="chatProfilePhoto" fitWidth="72" fitHeight="72" preserveRatio="true"/>
+         </StackPane>
+         <Label fx:id="chatProfileName" text="No conversation selected" styleClass="chat-profile-name"/>
+         <Label fx:id="chatProfileDetails" text="Choose a person to see their campus profile." wrapText="true" styleClass="chat-profile-details"/>
+        </VBox>
+        <Separator/>
+        <HBox alignment="CENTER_LEFT">
+         <Label text="Shared media &amp; files" styleClass="chat-shared-title"/>
+         <Region HBox.hgrow="ALWAYS"/>
+         <Label fx:id="sharedMediaCount" text="" styleClass="chat-people-count"/>
+        </HBox>
+        <ScrollPane fitToWidth="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" VBox.vgrow="ALWAYS" styleClass="shared-media-scroll">
+         <content><TilePane fx:id="sharedMediaGrid" prefColumns="3" prefTileWidth="73" prefTileHeight="112" hgap="8" vgap="8" styleClass="shared-media-grid"/></content>
+        </ScrollPane>
+        <Label fx:id="sharedMediaEmpty" text="Media and files sent here will appear in this grid." wrapText="true" styleClass="shared-media-empty"/>
+       </VBox>
+      </right>
      </BorderPane>
     </Tab>
     <Tab text="Community">
-     <BorderPane>
-      <top><VBox spacing="8" styleClass="toolbar"><HBox spacing="8"><Label fx:id="communityName" styleClass="section-title"/><Region HBox.hgrow="ALWAYS"/><Button text="Refresh" onAction="#refreshCommunity" styleClass="secondary-button"/></HBox><Label text="A focused home for your class community—announcements, questions, and shared momentum." styleClass="muted"/></VBox></top>
-      <center><ListView fx:id="communityList"/></center>
-      <bottom><HBox fx:id="communityComposer" spacing="8" styleClass="message-input"><TextField fx:id="communityText" promptText="Share a community update…" onAction="#sendCommunityMessage" HBox.hgrow="ALWAYS"/><Button text="Publish" onAction="#sendCommunityMessage"/></HBox></bottom>
+     <BorderPane styleClass="community-chat-shell">
+      <top><VBox spacing="6" styleClass="community-chat-header"><HBox spacing="8" alignment="CENTER_LEFT"><Label fx:id="communityName" styleClass="section-title"/><Region HBox.hgrow="ALWAYS"/><Button text="↻" onAction="#refreshCommunity" styleClass="chat-refresh-button"><tooltip><Tooltip text="Refresh community chat"/></tooltip></Button></HBox><Label text="A focused home for your class community—announcements, questions, and shared momentum." styleClass="muted"/></VBox></top>
+      <center>
+       <StackPane styleClass="community-thread-stage">
+        <ScrollPane fx:id="communityScroll" fitToWidth="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" styleClass="message-scroll">
+         <content><VBox fx:id="communityMessageContainer" spacing="7" styleClass="message-container"/></content>
+        </ScrollPane>
+        <VBox fx:id="communityEmptyState" spacing="6" alignment="CENTER" mouseTransparent="true" styleClass="chat-empty-state">
+         <Label text="Community chat is ready" styleClass="chat-empty-title"/>
+         <Label text="Be the first to share an update with your class." wrapText="true" styleClass="chat-empty-copy"/>
+        </VBox>
+       </StackPane>
+      </center>
+      <bottom>
+       <VBox fx:id="communityComposer" spacing="5" styleClass="chat-message-composer">
+        <Label fx:id="communityAttachmentStatus" styleClass="chat-attachment-status"/>
+        <HBox spacing="9" alignment="CENTER_LEFT" styleClass="chat-composer-row">
+         <Button fx:id="communityAttachButton" text="＋" onAction="#chooseCommunityAttachment" styleClass="chat-attach-button"><tooltip><Tooltip text="Attach photo, video, or file"/></tooltip></Button>
+         <TextField fx:id="communityText" promptText="Write to your community…" onAction="#sendCommunityMessage" HBox.hgrow="ALWAYS" styleClass="chat-message-field"/>
+         <Button fx:id="communitySendButton" text="Send" onAction="#sendCommunityMessage" styleClass="chat-send-button"/>
+        </HBox>
+       </VBox>
+      </bottom>
      </BorderPane>
     </Tab>
     <Tab fx:id="approvalsTab" text="Admin Approvals">
      <ScrollPane fitToWidth="true"><content><VBox spacing="10" styleClass="toolbar"><HBox spacing="8"><Label text="Approval inbox" styleClass="section-title"/><Label fx:id="approvalSummary" styleClass="muted"/><Region HBox.hgrow="ALWAYS"/><Button text="Refresh" onAction="#refreshApprovals"/></HBox><TextField fx:id="decisionReason" promptText="Optional decision note"/><TitledPane text="Student access requests" expanded="true"><content><VBox spacing="6"><ListView fx:id="userApprovalList" prefHeight="150"/><HBox spacing="8"><Button text="Approve" onAction="#approveUser"/><Button text="Decline" onAction="#rejectUser" styleClass="danger-button"/></HBox></VBox></content></TitledPane><TitledPane text="Pending posts" expanded="true"><content><VBox spacing="6"><ListView fx:id="postApprovalList" prefHeight="150"/><HBox spacing="8"><Button text="Approve" onAction="#approvePost"/><Button text="Decline" onAction="#rejectPost" styleClass="danger-button"/></HBox></VBox></content></TitledPane><TitledPane text="Pending question papers" expanded="true"><content><VBox spacing="6"><ListView fx:id="paperApprovalList" prefHeight="150"/><HBox spacing="8"><Button text="Approve" onAction="#approvePaper"/><Button text="Decline" onAction="#rejectPaper" styleClass="danger-button"/></HBox></VBox></content></TitledPane></VBox></content></ScrollPane>
     </Tab>
     <Tab text="My Profile">
-     <StackPane><VBox spacing="18" styleClass="content-card"><HBox spacing="16"><StackPane><Label fx:id="profileInitial" styleClass="avatar"/><ImageView fx:id="profileImage" fitHeight="58" fitWidth="58" preserveRatio="true"/></StackPane><VBox spacing="4"><Label fx:id="profileName" styleClass="section-title"/><Label text="Your campus identity" styleClass="muted"/></VBox><Region HBox.hgrow="ALWAYS"/><Button text="Update photo" onAction="#chooseProfilePhoto" styleClass="secondary-button"/></HBox><Separator/><Label fx:id="profileDetails" wrapText="true" style="-fx-font-size:15px;"/><Label fx:id="profilePhotoStatus" styleClass="muted"/></VBox></StackPane>
+     <StackPane><VBox spacing="18" styleClass="content-card"><HBox spacing="16"><StackPane><Label fx:id="profileInitial" styleClass="avatar"/><ImageView fx:id="profileImage" fitHeight="58" fitWidth="58" preserveRatio="true"/></StackPane><VBox spacing="5"><Label fx:id="profileName" styleClass="section-title"/><Label text="Your campus identity" styleClass="muted"/><HBox spacing="8" alignment="CENTER_LEFT"><TextField fx:id="profileNicknameInput" promptText="Update display name" HBox.hgrow="ALWAYS"/><Button text="Save name" onAction="#updateProfileName" styleClass="secondary-button"/></HBox></VBox><Region HBox.hgrow="ALWAYS"/><Button text="Update photo" onAction="#chooseProfilePhoto" styleClass="secondary-button"/></HBox><Separator/><Label fx:id="profileDetails" wrapText="true" style="-fx-font-size:15px;"/><Label fx:id="profilePhotoStatus" styleClass="muted"/></VBox></StackPane>
     </Tab>
    </tabs>
   </TabPane>
